@@ -1,0 +1,55 @@
+name: connectivity-test
+
+# One-off Phase 0 check. Manual only. Makes two small reads and prints only
+# status codes, never product data, prices or secrets.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check private data repo access
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+
+      - name: Report data repo access
+        run: echo "data repo checkout OK"
+
+      - name: Test WooCommerce REST reachability from this runner
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+        run: |
+          set -u
+          UA="rtech-price-sync/0.1 (+mailto:${CONTACT_EMAIL})"
+          base="${WC_URL%/}"
+
+          root=$(curl -sS -o /tmp/root.txt -w '%{http_code}' -A "$UA" --max-time 30 "$base/wp-json/" || echo "curl_failed")
+          echo "public REST root: HTTP $root"
+
+          sleep 3
+
+          auth=$(curl -sS -o /tmp/prod.txt -D /tmp/headers.txt -w '%{http_code}' \
+            -A "$UA" --max-time 30 -u "$WC_KEY:$WC_SECRET" \
+            "$base/wp-json/wc/v3/products?per_page=1" || echo "curl_failed")
+          echo "authenticated products read: HTTP $auth"
+
+          if [ "$auth" = "200" ]; then
+            echo "total products reported: $(grep -i '^x-wp-total:' /tmp/headers.txt | tr -d '\r' | cut -d' ' -f2)"
+            echo "RESULT: reachable and keys work"
+          else
+            echo "RESULT: failed. First 300 characters of the response, newlines removed:"
+            head -c 300 /tmp/prod.txt | tr '\n' ' '
+            echo
+            exit 1
+          fi
