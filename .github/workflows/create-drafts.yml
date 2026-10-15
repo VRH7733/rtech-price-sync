@@ -32,7 +32,7 @@ concurrency:
 jobs:
   drafts:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 180  # ~5 s per product: a 600-product brand takes ~50 min
     steps:
       - uses: actions/checkout@v4
 
