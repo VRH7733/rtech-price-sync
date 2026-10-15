@@ -1,0 +1,122 @@
+name: daily-prices
+
+# Two repos: this PUBLIC repo has the code; the PRIVATE repo VRH7733/rtech-price-data has the
+# catalogue (catalogue/rows/*.csv) and the run data (data/). The private repo is checked out with
+# the DATA_REPO_TOKEN secret; nothing private is committed here, and the public log shows counts.
+#
+# The nightly schedule is OFF until the owner approves going live (STOP 3 in docs/SPEC.md).
+# To turn it on, uncomment the two schedule lines. 18:30 UTC = 00:00 IST; GitHub may start
+# scheduled runs late, and may drop them under heavy load.
+on:
+  # schedule:
+  #   - cron: "30 18 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run or publish (empty = repo variable PUBLISH_MODE, else dry-run)"
+        required: false
+        default: ""
+      include_pending:
+        description: "dry run only: also evaluate publish=pending_review rows (pilot)"
+        type: boolean
+        default: false
+      brand:
+        description: "limit to one brand (empty = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Never let two runs overlap (they would hit the marketplaces twice as fast).
+concurrency:
+  group: daily-prices
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # GitHub-hosted jobs are capped at 6 h (docs.github.com/en/actions/reference/limits).
+    timeout-minutes: 355
+    env:
+      PYTHONPATH: src
+      RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+      MODE: ${{ github.event.inputs.mode || vars.PUBLISH_MODE || 'dry-run' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests (fast guard - a broken rule must not reach the shop)
+        run: python -m pytest -q
+
+      - name: Run price sync
+        id: sync
+        # shop credentials are only visible to this step (not to pip or pytest)
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+          INCLUDE_PENDING: ${{ github.event.inputs.include_pending }}
+          BRAND: ${{ github.event.inputs.brand }}
+        run: |
+          set +e
+          ARGS="--catalogue pd/catalogue/rows --data pd/data"
+          if [ "$MODE" = "publish" ]; then ARGS="$ARGS --publish"; fi
+          if [ "$INCLUDE_PENDING" = "true" ]; then ARGS="$ARGS --include-pending"; fi
+          if [ -n "$BRAND" ]; then ARGS="$ARGS --brand $BRAND"; fi
+          python -m rtech_sync.run $ARGS
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run summary (counts only)
+        if: always()
+        run: |
+          [ -f pd/data/summary.md ] && cat pd/data/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Commit data files to the private data repo
+        if: always()
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "nothing to commit"; else
+            git commit -q -m "price sync $(TZ=Asia/Kolkata date +%F) [$MODE]"
+            for i in 1 2 3 4; do
+              git pull -q --rebase --autostash && git push -q && break
+              echo "push attempt $i failed, retrying"; sleep $((i * 10))
+              if [ "$i" = 4 ]; then echo "::error::could not push state; latest.json is NOT saved"; exit 1; fi
+            done
+          fi
+
+      - name: Open flags issue in the private data repo
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          if [ -f pd/data/flags_issue.md ]; then
+            R=VRH7733/rtech-price-data
+            gh label create price-flag -R $R --color D93F0B --force || true
+            gh issue create -R $R --title "Price flags $(TZ=Asia/Kolkata date +%F) [$MODE]" \
+              --label price-flag --body-file pd/data/flags_issue.md \
+              || echo "::warning::could not open the flags issue (token needs Issues: write); flags are in data/flags.csv"
+          fi
+
+      - name: Fail the job if the sync hit a fatal problem
+        if: always()
+        run: |
+          code="${{ steps.sync.outputs.exit_code }}"
+          if [ -n "$code" ] && [ "$code" != "0" ]; then echo "sync exit code $code"; exit 1; fi

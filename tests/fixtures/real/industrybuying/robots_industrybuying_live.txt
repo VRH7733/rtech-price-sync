@@ -1,0 +1,57 @@
+User-agent: *
+Disallow: /categories*
+Disallow: /special-categories-/*
+Disallow: /*.pdf/*
+Disallow: /search/*
+Disallow: /?f_brand_*
+Disallow: /?sort=*
+Disallow: /?discount
+Disallow: /?promo=*
+Disallow: /?*&sort=*
+Disallow: /?q=*
+Disallow: /product_details/*
+Disallow: /?Watt=*
+Disallow: /order/cart*
+Disallow: /quotation/my-quotation/
+Disallow: /user/*
+Disallow: /mobile_similar_products*
+Disallow: /mobile-bought-together/*
+Disallow: /bought-together/*
+Disallow: /similar_products/*
+Disallow: /active-list/*
+Disallow: /list-payment-mode-promotion/*
+Disallow: /user-reviews/*
+Disallow: /shipment/*
+Disallow: /mobile-compatible-products/*
+Disallow: /compatible-products/*
+Disallow: /report-issue*
+Disallow: /promo/*
+Disallow: /order/*
+Disallow: /web/*
+Disallow: /order/payment*
+Disallow: /user/login*
+Disallow: /order/address*
+Disallow: /user/account*
+Disallow: /auth/login*
+
+User-agent: EtaoSpider
+Disallow: /
+
+User-agent: voltron
+Disallow: /
+
+User-agent: bingbot
+Crawl-delay: 1
+
+User-agent: Googlebot
+Disallow:
+
+User-agent: AdsBot-Google
+Disallow:
+
+User-agent: Googlebot-Image
+Disallow:
+
+
+Sitemap: https://www.industrybuying.com/sitemap_index.xml
+Sitemap: https://www.industrybuying.com/static/sitemap_new_leaf_sku.xml

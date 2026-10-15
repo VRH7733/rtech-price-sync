@@ -1,0 +1,53 @@
+#Disallowing subfolders and directories
+
+User-agent: *
+
+Disallow: /404/
+Disallow: /cgi-bin/
+Disallow: /corporate-gifting
+Disallow: /dashboard
+Disallow: /search*
+Disallow: /quickorder
+Disallow: /new-products
+Disallow: /picture
+Disallow: /*?n=
+Disallow: /manufacturers
+Disallow: /checkout
+Disallow: /login
+Disallow: /*?id_category=
+Disallow: /*?id_supplier=
+Disallow: /*?p=
+Disallow: /*?amp%
+Disallow: /*?search_query=
+Disallow: /Log.php
+Disallow: /*?controller=
+Disallow: /offers/340000000
+Disallow: /*?category=
+Disallow: /rfq*
+Disallow: /q/*
+Disallow: /blog/*/?lang=
+Disallow: */mp/assets/img/*.svg
+Disallow: /ampc/*
+Disallow: /ampb/*
+Disallow: /ampcb/*
+Disallow: /ampl/*
+Disallow: /a/
+Allow: /*.js
+Allow: /*.css
+Sitemap: https://www.moglix.com/sitemap_index.xml
+
+#Allowing Googlebots
+
+User-agent: Googlebot
+
+Disallow: /search*
+Allow: /*.js
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: ClaudeBot
+allow: /
+
+User-agent: CCBot		#Commoncrawl
+Disallow: /

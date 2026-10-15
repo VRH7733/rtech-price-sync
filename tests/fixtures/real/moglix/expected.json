@@ -1,0 +1,66 @@
+{
+  "_about": "Ground truth for real Moglix product pages captured 2026-10-14 via the owner's Chrome. Written by reading each page's server-rendered price block text and JSON-LD directly, independently of rtech_sync.parsers. All prices INR. The price block reads '<incl> (Incl. of all taxes) <excl> + <gst> GST [MRP <mrp> <n>% OFF] [AVAILABLE ON REQUEST]'. JSON-LD Product.offers.price equals the incl-GST figure on every page EXCEPT the GM switch (see its notes). 'AVAILABLE ON REQUEST' pages carry JSON-LD availability OutOfStock and no ADD TO CART button: Moglix is not selling them, so they must not be used as a price source. Each Moglix variant (size, colour, poles) is its own /mp/msn... URL; the Havells page shows variant selector buttons but its JSON-LD describes only this MSN.",
+  "fixtures": [
+    {
+      "file": "moglix_polycab_wire_1_5sqmm_90m_red.html",
+      "url": "https://www.moglix.com/polycab-etira-15-sqmm-90m-red-single-core-fr-multistrand-pvc-insulated-unsheathed-industrial-cable/mp/msnq94pz41yek0",
+      "selling_price": 3299, "mrp": 3690, "currency": "INR",
+      "tax_label_text": "₹3,299 (Incl. of all taxes) ₹2,795 + ₹504 GST MRP ₹3,690 10% OFF",
+      "tax_basis": "incl_gst", "in_stock": true, "usable": true,
+      "variant_hint": "1.5 sq mm; red", "pack_size": "90 m",
+      "variant_description": "Polycab Etira 1.5 Sqmm 90m Red single core FR wire; MSNQ94PZ41YEK0",
+      "notes": "In stock, ADD TO CART present."
+    },
+    {
+      "file": "moglix_polycab_wire_1_5sqmm_90m_blue.html",
+      "url": "https://www.moglix.com/polycab-etira-15-sqmm-90m-blue-single-core-fr-multistrand-pvc-insulated-unsheathed-industrial-cable/mp/msnl5gl0831pk4",
+      "selling_price": 3299, "mrp": 3690, "currency": "INR",
+      "tax_label_text": "₹3,299 (Incl. of all taxes) ₹2,795 + ₹504 GST MRP ₹3,690 10% OFF",
+      "tax_basis": "incl_gst", "in_stock": true, "usable": true,
+      "variant_hint": "1.5 sq mm; blue", "pack_size": "90 m",
+      "variant_description": "Polycab Etira 1.5 Sqmm 90m Blue single core FR wire; MSNL5GL0831PK4",
+      "notes": "On 15 Oct 05:49 IST the bot fetch of this URL showed 3300 (₹2,795 + ₹505 GST): Moglix changed the price after this capture."
+    },
+    {
+      "file": "moglix_mcb_havells_63a_sp_c.html",
+      "url": "https://www.moglix.com/havells-euro-ii-63a-single-pole-c-curve-mcb-dhmgcspf063/mp/msn2vdxtgrv4af",
+      "selling_price": 679, "mrp": 954, "currency": "INR",
+      "tax_label_text": "₹679 (Incl. of all taxes) ₹575 + ₹104 GST MRP ₹954 28% OFF",
+      "tax_basis": "incl_gst", "in_stock": true, "usable": true,
+      "variant_hint": "63a; single pole; c curve", "pack_size": "",
+      "variant_description": "Havells Euro-II 63A SP C-curve MCB DHMGCSPF063; MSN2VDXTGRV4AF",
+      "notes": "Page shows selector buttons for other poles/ratings (Double Pole, 10 Amp, 16 A ...); each is a different MSN URL."
+    },
+    {
+      "file": "moglix_pipe_astral_cpvc_40mm.html",
+      "url": "https://www.moglix.com/astral-cpvc-pro-sdr-11-40mm-pipe-m511110305/mp/msn2r5q9uoet73",
+      "selling_price": 984, "mrp": 1735, "currency": "INR",
+      "tax_label_text": "₹984 (Incl. of all taxes) ₹833 + ₹151 GST MRP ₹1,735 43% OFF AVAILABLE ON REQUEST",
+      "tax_basis": "incl_gst", "in_stock": false, "usable": false,
+      "variant_hint": "cpvc; 40mm; sdr-11", "pack_size": "",
+      "variant_description": "Astral CPVC Pro SDR-11 40 mm pipe M511110305; MSN2R5Q9UOET73",
+      "notes": "AVAILABLE ON REQUEST, JSON-LD OutOfStock: excluded as out_of_stock. Pipe length is not stated in the title."
+    },
+    {
+      "file": "moglix_switch_gm_10a_1way.html",
+      "url": "https://www.moglix.com/gm-10a-1m-1-way-switch-with-led-indicator-aa-1-002-w/mp/msn2qrg0ab50gd",
+      "selling_price": null, "mrp": 92, "currency": "INR",
+      "tax_label_text": "MRP ₹92 (Incl. of all taxes) ₹77 + ₹15 GST AVAILABLE ON REQUEST",
+      "tax_basis": "incl_gst", "in_stock": false, "usable": false,
+      "jsonld_price": 1840,
+      "variant_hint": "10a; 1 way", "pack_size": "",
+      "variant_description": "GM 10A 1M 1-way switch with LED, AA 1 002-W; MSN2QRG0AB50GD",
+      "notes": "JSON-LD says price 1840 but the page shows only 'MRP ₹92' (1840 = 20 x 92, probably a box of 20). The JSON-LD price is NOT on the page, so it must be refused (price_not_visible_in_text). Also OutOfStock / AVAILABLE ON REQUEST."
+    },
+    {
+      "file": "moglix_switch_legrand_mylinc_6a_pack5.html",
+      "url": "https://www.moglix.com/legrand-6a-mylinc-1-way-single-pole-switch-s3c01ld017my-pack-of-5/mp/msn2qo41yo2msj",
+      "selling_price": 678, "mrp": 686, "currency": "INR",
+      "tax_label_text": "₹678 (Incl. of all taxes) ₹574 + ₹104 GST MRP ₹686 1% OFF AVAILABLE ON REQUEST",
+      "tax_basis": "incl_gst", "in_stock": false, "usable": false,
+      "variant_hint": "6a; 1 way", "pack_size": "pack of 5",
+      "variant_description": "Legrand Mylinc 6A 1-way SP switch S3C01LD017MY, pack of 5; MSN2QO41YO2MSJ",
+      "notes": "Price is for a PACK OF 5 (title). A row selling single switches must get pack_mismatch. Also OutOfStock / AVAILABLE ON REQUEST."
+    }
+  ]
+}

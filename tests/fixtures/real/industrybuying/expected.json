@@ -1,0 +1,65 @@
+{
+  "_about": "Ground truth for real IndustryBuying product pages captured 2026-10-14 via the owner's Chrome (fetch, credentials omitted, browser UA). Established by reading the raw HTML (JSON-LD + server-rendered price block text) independently of rtech_sync.parsers. All prices INR. On every page the main price block reads '<incl> (Incl. of all taxes) <excl> + 18% GST [MRP <mrp> <n>% OFF]'; JSON-LD Product.offers.price equals the INCL-GST figure. IB's displayed excl figure is not always exactly incl/1.18 (finolex 124 vs 104, anchor 420 vs 360), so never derive one from the other.",
+  "fixtures": [
+    {
+      "file": "ib_polycab_wire_1_5sqmm_90m.html",
+      "url": "https://www.industrybuying.com/flame-retardant-fr-house-wires-polycab-EL.CA.HO.HA.169562",
+      "selling_price": 5073, "mrp": null, "currency": "INR",
+      "tax_label_text": "₹5,073 (Incl. of all taxes) ₹4,299 + 18% GST",
+      "tax_basis": "incl_gst", "price_incl_gst": 5073, "price_excl_gst": 4299,
+      "variant_description": "Polycab Optima+ 1.5 Sq.mm 1 Core FRLF Wire Red (90 m); SKU EL.CA.HO.HA.169562",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "No MRP shown. JSON-LD availability InStock; 'Ships within 3 days'. Page has FAMILY_ATTRIBUTES swatches (Color x5, Nominal Area x8) and an 'EXPLORE OTHER VARIANTS' list (38 more) with sibling prices, e.g. 0.75 Sq.mm Yellow ₹9,439 - each variant is its own URL/SKU, so this URL is single-variant. Related-product prices ('₹943 ₹2,900 Add to Cart') precede the main price in document text."
+    },
+    {
+      "file": "ib_polycab_wire_2_5sqmm_90m_black.html",
+      "url": "https://www.industrybuying.com/flame-retardant-fr-house-wires-polycab-EL.CA.HO.HA.169587",
+      "selling_price": 7050, "mrp": null, "currency": "INR",
+      "tax_label_text": "₹7,050 (Incl. of all taxes) ₹5,975 + 18% GST",
+      "tax_basis": "incl_gst", "price_incl_gst": 7050, "price_excl_gst": 5975,
+      "variant_description": "Polycab Optima+ 2.5 Sq.mm 1 Core FRLF Wire Black (90 m); SKU EL.CA.HO.HA.169587",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "Swatch 'selected' SKUs point to representative siblings (Black->169585, 2.5 Sq.mm->169579), NOT this page's SKU 169587: do not use swatch SKUs as the page identity. JSON-LD sku is authoritative."
+    },
+    {
+      "file": "ib_conduit_salzer.html",
+      "url": "https://www.industrybuying.com/electrical-conduits-and-fittings-salzer-ELE.CAB.36831976",
+      "selling_price": 164, "mrp": 190, "currency": "INR",
+      "tax_label_text": "₹164 (Incl. of all taxes) ₹139 + 18% GST MRP ₹190 13.68% OFF",
+      "tax_basis": "incl_gst", "price_incl_gst": 164, "price_excl_gst": 139,
+      "variant_description": "Salzer Grey B 25x40 Thin Cable Duct Slot STD WWB2540TG (Size 25x40 mm); SKU ELE.CAB.36831976",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "This is a slotted cable duct (panel wiring trunking), not a round PVC conduit pipe. 8 size variants, each a separate URL. Unit of sale not stated in the price block (MOQ 1)."
+    },
+    {
+      "file": "ib_pipe_finolex.html",
+      "url": "https://www.industrybuying.com/upvc-pipe-fittings-finolex-PLU.TAN.105418338",
+      "selling_price": 124, "mrp": 137, "currency": "INR",
+      "tax_label_text": "₹124 (Incl. of all taxes) ₹104 + 18% GST MRP ₹137 9.41% OFF",
+      "tax_basis": "incl_gst", "price_incl_gst": 124, "price_excl_gst": 104,
+      "variant_description": "Finolex ½ inch UPVC Plain Tank Nipple Socket End, 4637; SKU PLU.TAN.105418338",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "A UPVC pipe FITTING, not a pipe length. 'Minimum Order Quantity- 4': per-unit price 124 but cart minimum is 4 units. Excl figure 104 != 124/1.18 (105.08)."
+    },
+    {
+      "file": "ib_switch_anchor.html",
+      "url": "https://www.industrybuying.com/electrical-switch-anchor-ELE.DOM.32724933",
+      "selling_price": 420, "mrp": 420, "currency": "INR",
+      "tax_label_text": "₹420 (Incl. of all taxes) ₹360 + 18% GST MRP ₹420 0.02% OFF",
+      "tax_basis": "incl_gst", "price_incl_gst": 420, "price_excl_gst": 360,
+      "variant_description": "Anchor Penta Deluxe 6 A 1 Way Switch Urea Back White 14125; SKU ELE.DOM.32724933",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "Non-modular (Penta) switch; no FAMILY_ATTRIBUTES. 'Minimum Order Quantity- 20'. ₹420 for a single Penta switch looks high vs typical retail - possibly a box price shown per unit; unit of sale is NOT stated - treat as ambiguous, verify manually before matching. Excl 360 != 420/1.18 (355.9)."
+    },
+    {
+      "file": "ib_mcb_schneider.html",
+      "url": "https://www.industrybuying.com/miniature-circuit-breakersmcb-schneider-electric-EL.CI.MI.197390",
+      "selling_price": 778, "mrp": 1728, "currency": "INR",
+      "tax_label_text": "₹778 (Incl. of all taxes) ₹659 + 18% GST MRP ₹1,728 54.98% OFF",
+      "tax_basis": "incl_gst", "price_incl_gst": 778, "price_excl_gst": 659,
+      "variant_description": "Schneider A9N61519 63 A Single Pole DC MCB (Rated Current 63 Amp); SKU EL.CI.MI.197390",
+      "multi_variant_page": false, "in_stock": true,
+      "notes": "DC MCB (Acti9 C60H-DC family), not a typical AC domestic MCB. 15 rated-current variants, each its own URL; the 'EXPLORE OTHER VARIANTS' block lists sibling prices in raw HTML (e.g. 10 A ₹589 MRP ₹1,260; 32 A ₹1,132, 'Ships within 61 days')."
+    }
+  ]
+}

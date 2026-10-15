@@ -1,0 +1,14 @@
+User-Agent: *
+Allow: /
+Disallow: /account
+Disallow: /account/*
+Disallow: /cart
+Disallow: /login
+Disallow: /order-confirmation
+Disallow: /order-tracking
+Disallow: /order-tracking/*
+Disallow: /search
+Disallow: /dev-preview
+Disallow: /dev-preview/*
+
+Sitemap: https://home-run.co/sitemap.xml

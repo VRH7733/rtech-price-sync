@@ -1,0 +1,3 @@
+sku,wc_product_id,wc_variation_id,brand,category,family,title,pack_size,variant_hint,mode,markup_pct,gst_pct,cost_floor,manual_price,publish,match_confidence,url_moglix,url_industrybuying,url_homerun,notes
+EXAMPLE-001,1234,5678,Polycab,Wires & Cables,FR PVC Insulated Wire,"Polycab 1.5 sq mm FR PVC Wire Red",90 m,"1.5 sq mm; red",priced,,,,,no,,,,,"Example row: delete it. publish=no means ignored."
+EXAMPLE-002,1300,,Legrand,Distribution Boards,Panel board,"Custom panel board",,,quote,,,,,no,,,,,"quote-only items need no URLs"

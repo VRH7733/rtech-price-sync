@@ -1,0 +1,176 @@
+from datetime import date, timedelta
+from decimal import Decimal as D
+
+from rtech_sync.config import PricingCfg
+from rtech_sync.decision import apply_markup, decide, spread_pct
+from rtech_sync.models import PriceState, Row, SourceResult
+
+TODAY = date(2026, 10, 14)
+CFG = PricingCfg()
+
+
+def row(**kw):
+    base = dict(sku="S1", mode="priced", publish="yes", wc_product_id=1)
+    base.update(kw)
+    return Row(**base)
+
+
+def ok(source, price):
+    return SourceResult(source, "ok", price=D(str(price)), url=f"https://x/{source}")
+
+
+def bad(source, status):
+    return SourceResult(source, status, url=f"https://x/{source}")
+
+
+def run(results, state=None, r=None, cfg=CFG):
+    return decide(r or row(), results, state or PriceState(), cfg, TODAY)
+
+
+# ---- the owner's core rule -------------------------------------------------
+def test_under_5pct_publishes_the_cheapest():
+    d = run([ok("moglix", 104), ok("industrybuying", 100), ok("homerun", 102)])
+    assert d.action == "publish" and d.price == D(100) and d.cheapest_source == "industrybuying"
+    assert d.flags == []
+
+
+def test_exactly_5pct_is_flagged_not_published():
+    d = run([ok("moglix", 100), ok("homerun", "105.00")], PriceState(price=D(99)))
+    assert d.action == "hold" and "spread_over_5pct" in d.flags and d.price is None
+
+
+def test_just_under_5pct_publishes():
+    d = run([ok("moglix", "99.99"), ok("homerun", "104.98")])
+    assert d.action == "publish" and d.price == D(100)  # ceil(99.99)
+
+
+def test_outlier_among_three_flags_the_item():
+    d = run([ok("moglix", 100), ok("industrybuying", 102), ok("homerun", 120)])
+    assert d.action == "hold" and "spread_over_5pct" in d.flags
+    assert d.spread_pct == D(20)
+
+
+def test_spread_pct_helper():
+    assert spread_pct([D(100), D(105)]) == D(5)
+
+
+# ---- markup & rounding -----------------------------------------------------
+def test_rounds_up_to_next_rupee_with_zero_markup():
+    d = run([ok("moglix", "425.40"), ok("homerun", "426")])
+    assert d.price == D(426)
+
+
+def test_markup_applies_before_rounding():
+    assert apply_markup(D("425.40"), D(10)) == D(468)  # 467.94 rounds up to 468
+
+
+def test_markup_per_row_override():
+    d = run([ok("moglix", 100), ok("homerun", 101)], r=row(markup_pct=D(10)))
+    assert d.price == D(110)
+
+
+# ---- single source ---------------------------------------------------------
+def test_single_source_without_baseline_is_not_published():
+    d = run([ok("moglix", 100), bad("homerun", "blocked")])
+    assert d.action == "hold" and "single_source_no_baseline" in d.flags
+
+
+def test_single_source_within_5pct_of_live_price_publishes():
+    d = run([ok("moglix", 103), bad("homerun", "error")], PriceState(price=D(100), last_ok=TODAY))
+    assert d.action == "publish" and d.price == D(103)
+
+
+def test_single_source_jump_is_held():
+    d = run([ok("moglix", 120)], PriceState(price=D(100), last_ok=TODAY))
+    assert d.action == "hold" and "single_source_jump" in d.flags
+
+
+# ---- manual price ----------------------------------------------------------
+def test_manual_price_overrides_everything():
+    d = run([ok("moglix", 100), ok("homerun", 200)], r=row(manual_price=D(150), cost_floor=D(999)))
+    assert d.action == "publish" and d.price == D(150) and d.flags == []
+
+
+# ---- guards ----------------------------------------------------------------
+def test_below_cost_floor_holds_and_flags():
+    d = run([ok("moglix", 90), ok("homerun", 91)], PriceState(price=D(95)), r=row(cost_floor=D(100)))
+    assert d.action == "hold" and "below_cost_floor" in d.flags
+
+
+def test_big_move_flags_but_still_publishes_by_default():
+    d = run([ok("moglix", 130), ok("homerun", 131)], PriceState(price=D(100), last_ok=TODAY))
+    assert d.action == "publish" and "big_move" in d.flags
+
+
+def test_big_move_can_be_configured_to_hold():
+    cfg = PricingCfg(big_move_holds=True)
+    d = run([ok("moglix", 130), ok("homerun", 131)], PriceState(price=D(100), last_ok=TODAY), cfg=cfg)
+    assert d.action == "hold" and "big_move" in d.flags
+
+
+def test_15pct_exactly_is_not_a_big_move():
+    d = run([ok("moglix", 115), ok("homerun", 116)], PriceState(price=D(100), last_ok=TODAY))
+    assert "big_move" not in d.flags
+
+
+# ---- stale guard -----------------------------------------------------------
+def test_stale_after_3_days_hides_price():
+    st = PriceState(price=D(100), last_ok=TODAY - timedelta(days=3))
+    d = run([bad("moglix", "blocked"), bad("homerun", "error")], st)
+    assert d.action == "hide" and "stale" in d.flags
+
+
+def test_not_stale_at_2_days():
+    st = PriceState(price=D(100), last_ok=TODAY - timedelta(days=2))
+    d = run([bad("moglix", "blocked")], st)
+    assert d.action == "hold"
+
+
+def test_flagged_hold_also_goes_stale_so_old_prices_do_not_linger():
+    st = PriceState(price=D(100), last_ok=TODAY - timedelta(days=4))
+    d = run([ok("moglix", 100), ok("homerun", 120)], st)
+    assert d.action == "hide" and "spread_over_5pct" in d.flags and "stale" in d.flags
+
+
+def test_fresh_price_restores_a_hidden_row():
+    st = PriceState(price=D(100), last_ok=TODAY - timedelta(days=9), hidden=True)
+    d = run([ok("moglix", 100), ok("homerun", 101)], st)
+    assert d.action == "publish" and d.refreshed
+
+
+def test_never_published_row_is_never_hidden():
+    d = run([bad("moglix", "blocked")], PriceState())
+    assert d.action == "hold" and "stale" not in d.flags
+
+
+# ---- source problems -------------------------------------------------------
+def test_variant_problem_is_flagged_but_other_sources_still_publish():
+    d = run([ok("moglix", 100), ok("homerun", 101), bad("industrybuying", "variant_unconfirmed")])
+    assert d.action == "publish" and "variant_unconfirmed:industrybuying" in d.flags
+
+
+def test_blocked_source_is_info_only():
+    d = run([ok("moglix", 100), ok("homerun", 101), bad("industrybuying", "robots_blocked")])
+    assert d.flags == [] and "robots_blocked:industrybuying" in d.info
+
+
+def test_no_urls_flag():
+    d = run([bad("moglix", "no_url"), bad("homerun", "no_url"), bad("industrybuying", "no_url")])
+    assert "no_urls" in d.flags
+
+
+def test_all_not_refreshed_is_not_a_flag():
+    d = run([bad("moglix", "not_refreshed"), bad("homerun", "no_url")])
+    assert d.flags == [] and d.action == "hold"
+
+
+def test_no_sources_flag_when_all_failed():
+    d = run([bad("moglix", "blocked"), bad("homerun", "error")])
+    assert "no_sources" in d.flags
+
+
+# ---- skipping --------------------------------------------------------------
+def test_quote_and_pending_rows_are_skipped():
+    assert run([ok("moglix", 1)], r=row(mode="quote")).action == "skip"
+    assert run([ok("moglix", 1)], r=row(publish="pending_review")).action == "skip"
+    assert run([ok("moglix", 1)], r=row(publish="no")).action == "skip"

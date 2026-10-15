@@ -1,0 +1,27 @@
+User-agent: *
+Disallow: /categories*
+Disallow: /special-categories-/*
+Disallow: /*.pdf/*
+Disallow: /search/*
+Disallow: /?f_brand_*
+Disallow: /?sort=*
+Disallow: /?discount
+Disallow: /?promo=*
+Disallow: /?*&sort=*
+Disallow: /?q=*
+Disallow: /product_details/*
+Disallow: /?Watt=*
+Disallow: /order/cart*
+Disallow: /user/*
+Disallow: /order/*
+
+User-agent: EtaoSpider
+Disallow: /
+
+User-agent: bingbot
+Crawl-delay: 1
+
+User-agent: Googlebot
+Disallow:
+
+Sitemap: https://www.industrybuying.com/sitemap_index.xml

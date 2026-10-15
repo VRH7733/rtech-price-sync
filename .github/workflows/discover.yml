@@ -1,0 +1,83 @@
+name: discover
+
+# Manual. Finds candidate product URLs for some brands on each marketplace from their PUBLISHED
+# sitemaps (tools/discover.py: robots.txt, >= 3 s per host, honest User-Agent, no search pages)
+# and saves them to the PRIVATE data repo under discovery/<date>/. One job per site, so each
+# site sees one polite client.
+on:
+  workflow_dispatch:
+    inputs:
+      brands:
+        description: "space-separated brands, e.g. polycab vip"
+        default: "polycab vip"
+      keywords:
+        description: "space-separated URL words; a URL needs one (empty = any)"
+        default: ""
+      max_pages:
+        description: "max product pages fetched per site (IndustryBuying, HomeRun)"
+        default: "150"
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [moglix, industrybuying, homerun]
+    env:
+      PYTHONPATH: src
+      RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Discover
+        env:
+          BRANDS: ${{ github.event.inputs.brands }}
+          KEYWORDS: ${{ github.event.inputs.keywords }}
+          MAX_PAGES: ${{ github.event.inputs.max_pages }}
+          SOURCE: ${{ matrix.source }}
+        run: |
+          mkdir -p out
+          ARGS="--source $SOURCE --out out --max-pages $MAX_PAGES"
+          for b in $BRANDS; do ARGS="$ARGS --brand $b"; done
+          for k in $KEYWORDS; do ARGS="$ARGS --keyword $k"; done
+          if [ "$SOURCE" != "moglix" ]; then ARGS="$ARGS --fetch"; fi
+          python tools/discover.py $ARGS 2>&1 | tee out/log_$SOURCE.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discovery-${{ matrix.source }}
+          path: out/
+          retention-days: 1
+
+  save:
+    needs: site
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Commit discovery files
+        run: |
+          d="pd/discovery/$(TZ=Asia/Kolkata date +%F)"
+          mkdir -p "$d"
+          find art -type f -exec cp {} "$d"/ \;
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add discovery
+          git diff --cached --quiet && echo "nothing new" || { git commit -q -m "discovery $(date -u +%F)"; git push -q; }

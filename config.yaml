@@ -1,0 +1,55 @@
+# rtech-price-sync configuration. Contact email comes from env RTECH_CONTACT_EMAIL.
+site:
+  base_url: "https://rtechelectricals.com"
+  timezone: "Asia/Kolkata"
+
+sources:
+  moglix:
+    domain: "moglix.com"
+    # Verified 14 Oct 2026 on 6 real pages: "(Incl. of all taxes)", JSON-LD price = incl figure
+    # (tests/test_real_moglix.py); bot fetch 15 Oct gave the same pages
+    assumed_tax_basis: incl_gst
+  industrybuying:
+    domain: "industrybuying.com"
+    # Verified 14 Oct 2026 on 6 real pages: "(Incl. of all taxes)", JSON-LD price = incl figure
+    # (tests/test_real_industrybuying.py); bot fetch 15 Oct gave the same prices
+    assumed_tax_basis: incl_gst
+  homerun:
+    domain: "home-run.co"
+    # Owner's delivery pincode (decided 15 Oct 2026): 560065. The bot sends no pincode; the
+    # server-rendered price was the same as the owner's browser on 14/14 pages (15 Oct bot check).
+    # Verified 14 Oct 2026 on 8 real pages: price block says "Incl GST" (tests/test_real_homerun.py)
+    assumed_tax_basis: incl_gst
+
+pricing:
+  spread_flag_pct: 5               # spread >= this => flag and hold previous price
+  big_move_pct: 15                 # price move > this vs last published => flag "big_move"
+  big_move_holds: false            # true => also hold the price when big_move fires
+  single_source_max_move_pct: 5    # with one source, publish only if within this of last price
+  default_markup_pct: 0
+  default_gst_pct: 18
+  stale_days: 3                    # no validated price for this many days => hide price
+  fetch_for_manual_rows: false     # false saves requests; manual_price rows are not fetched
+
+fetch:
+  min_delay_seconds: 3             # per host, across everything in the process
+  timeout_seconds: 25
+  retries: 1                       # one backoff retry on 429/5xx
+  retry_wait_seconds: 20
+  # Fetching stops after this many minutes so there is time left to publish and commit inside the
+  # 6 h (360 min) GitHub job cap. 300 min = fetching ends ~05:00 IST if the job starts at 00:00.
+  max_runtime_minutes: 300
+  per_host_request_budget:
+    moglix: 5500
+    industrybuying: 5500
+    homerun: 5500
+
+publisher:
+  batch_size: 25
+  pause_seconds: 2
+  backoff_seconds: [5, 15, 45, 120]
+  backoff_statuses: [429, 502, 503, 504, 508]
+  stop_after_consecutive_failures: 3
+  history_keep_days: 30
+  set_instock: true                # priced items are set to "in stock" (removes the SOLD OUT badge)
+  clear_sale_price: true           # an old sale price would override the synced regular price

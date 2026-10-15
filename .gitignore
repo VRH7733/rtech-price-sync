@@ -1,0 +1,9 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+data/backup/
+data/http_cache.json
+*.zip
+data/shop_export/
