@@ -52,3 +52,10 @@ def test_parse_sitemap_urlset_and_index_and_gzip():
     assert parse_sitemap(urlset) == (["https://a/1", "https://a/2"], [])
     assert parse_sitemap(index) == ([], ["https://a/s1.xml"])
     assert parse_sitemap(gzip.compress(urlset))[0] == ["https://a/1", "https://a/2"]
+
+
+def test_slug_text_uses_the_name_segment_of_moglix_urls():
+    from rtech_sync.matching import slug_text
+
+    u = "https://www.moglix.com/polycab-etira-15-sqmm-90m-red-single-core-fr/mp/msnq94pz41yek0"
+    assert slug_text(u).startswith("polycab etira 15sqmm 90m red")

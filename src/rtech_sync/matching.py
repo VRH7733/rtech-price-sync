@@ -22,7 +22,11 @@ _SLUG_JUNK = {"buy", "online", "at", "best", "price", "india", "in", "the", "and
 
 def slug_text(url: str) -> str:
     path = urlsplit(url).path
-    last = [p for p in path.split("/") if p][-1] if path.strip("/") else ""
+    parts = [p for p in path.split("/") if p]
+    # Moglix product URLs end in an id ("/<name-slug>/mp/msn2qrg0ab50gd"): use the longest
+    # hyphenated segment, which is the product name on all three sites
+    named = [p for p in parts if "-" in p]
+    last = max(named, key=len) if named else (parts[-1] if parts else "")
     last = re.sub(r"\.(html?|php)$", "", last)
     return normalise_text(re.sub(r"[-_+]+", " ", last))
 
