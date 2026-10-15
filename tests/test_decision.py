@@ -235,3 +235,56 @@ def test_manual_price_alert_ignores_outlier_listings_and_quiet_when_cheaper():
     assert d.flags == ["market_below_manual:industrybuying"]
     d = run([ok("homerun", 3089)], r=row(manual_price=D(3000)), cfg=OUT)
     assert d.action == "publish" and d.price == D(3000) and d.flags == []
+
+
+# ---- the owner's go-live rule: cheapest of the three (15 Oct 2026) ------------------------------
+CH = PricingCfg(rule="cheapest", outlier_ratio=D(2), big_move_pct=D(40))
+
+
+def test_cheapest_publishes_the_cheapest_whatever_the_spread():
+    d = run([ok("moglix", 4465), ok("homerun", 3089)], cfg=CH)
+    assert d.action == "publish" and d.price == D(3089) and d.cheapest_source == "homerun"
+    assert d.spread_pct > 40 and d.flags == []
+
+
+def test_cheapest_publishes_a_single_source_without_a_baseline():
+    d = run([ok("industrybuying", 9439), bad("moglix", "out_of_stock")], cfg=CH)
+    assert d.action == "publish" and d.price == D(9439)
+
+
+def test_cheapest_ignores_a_listing_over_twice_the_others():
+    d = run([ok("industrybuying", 15339), ok("homerun", 3089)], cfg=CH)
+    assert d.price == D(3089) and "outlier_ignored:industrybuying" in d.flags
+
+
+def test_cheapest_ignores_a_price_below_half_of_two_agreeing_sites():
+    d = run([ok("industrybuying", 900), ok("homerun", 3089), ok("moglix", 3100)], cfg=CH)
+    assert "low_outlier_ignored:industrybuying" in d.flags and d.price == D(3089)
+
+
+def test_cheapest_holds_a_big_move_one_day_then_publishes_when_it_repeats():
+    d = run([ok("homerun", 1500)], PriceState(price=D(3000), last_ok=TODAY), cfg=CH)
+    assert d.action == "hold" and "big_move_held" in d.flags and d.pending == D(1500)
+    d = run([ok("homerun", 1510)], PriceState(price=D(3000), last_ok=TODAY, pending=D(1500)), cfg=CH)
+    assert d.action == "publish" and d.price == D(1510) and "big_move_confirmed" in d.info
+
+
+def test_cheapest_move_under_40pct_publishes_at_once():
+    d = run([ok("homerun", 2000)], PriceState(price=D(3000), last_ok=TODAY), cfg=CH)
+    assert d.action == "publish" and d.price == D(2000)
+
+
+def test_cheapest_with_no_price_keeps_the_old_price_then_becomes_a_quote():
+    st = PriceState(price=D(3000), last_ok=TODAY - timedelta(days=1))
+    d = run([bad("homerun", "out_of_stock")], st, cfg=CH)
+    assert d.action == "hold" and d.price is None
+    st = PriceState(price=D(3000), last_ok=TODAY - timedelta(days=3))
+    d = run([bad("homerun", "out_of_stock")], st, cfg=CH)
+    assert d.action == "hide"
+
+
+def test_cheapest_still_respects_cost_floor_and_manual_price():
+    d = run([ok("homerun", 90)], r=row(cost_floor=D(100)), cfg=CH)
+    assert d.action == "hold" and "below_cost_floor" in d.flags
+    d = run([ok("homerun", 90)], r=row(manual_price=D(150)), cfg=CH)
+    assert d.action == "publish" and d.price == D(150)

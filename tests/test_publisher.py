@@ -92,3 +92,17 @@ def test_missing_result_for_item_counts_as_failure():
     woo = FakeWoo([(200, {"update": []})])
     rep = publish_updates(woo, [upd(0)], CFG, dry_run=False, sleep=lambda s: None)
     assert rep.failed and not rep.published
+
+
+def test_quote_mode_turns_a_priceless_product_into_an_in_stock_quote_product_and_back():
+    from decimal import Decimal
+    from rtech_sync.config import PublisherCfg
+    from rtech_sync.publisher import Update, build_payload
+    cfg = PublisherCfg(quote_external=True, quote_url="https://shop/q/?sku={sku}")
+    q = build_payload(Update("RT-1", 7, None, None, "2026-10-15"), cfg)
+    assert q["type"] == "external" and q["regular_price"] == "" and q["stock_status"] == "instock"
+    assert q["button_text"] == "Request a Quote" and q["external_url"] == "https://shop/q/?sku=RT-1"
+    p = build_payload(Update("RT-1", 7, None, Decimal("3089"), "2026-10-15"), cfg)
+    assert p["type"] == "simple" and p["regular_price"] == "3089" and p["stock_status"] == "instock"
+    v = build_payload(Update("RT-1", 7, 70, None, "2026-10-15"), cfg)  # a variation keeps its type
+    assert "type" not in v and v["regular_price"] == ""

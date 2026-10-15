@@ -46,6 +46,8 @@ def build_payload(u: Update, cfg: Optional[PublisherCfg] = None) -> dict:
         payload = {"id": target, "regular_price": "", "meta_data": meta}
         if cfg.clear_sale_price:
             payload["sale_price"] = ""
+        if cfg.quote_external and not u.variation_id:
+            payload.update(quote_fields(u.sku, cfg))
         return payload
     payload = {
         "id": target,
@@ -57,7 +59,22 @@ def build_payload(u: Update, cfg: Optional[PublisherCfg] = None) -> dict:
         payload["sale_price"] = ""
     if cfg.set_instock:
         payload["stock_status"] = "instock"
+    if cfg.quote_external and not u.variation_id:
+        payload["type"] = "simple"  # a quote product that has a price again
     return payload
+
+
+def quote_fields(sku: str, cfg: PublisherCfg) -> dict:
+    """In stock, no price, a Request a Quote button (WooCommerce "external" product).
+    Owner's go-live decision, 15 Oct 2026."""
+    if not cfg.quote_url:
+        raise ValueError("publisher.quote_url is required with quote_external")
+    return {
+        "type": "external",
+        "button_text": cfg.quote_button_text,
+        "external_url": cfg.quote_url.replace("{sku}", sku),
+        "stock_status": "instock",
+    }
 
 
 class WooClient:
@@ -91,9 +108,10 @@ class WooClient:
         return self._post("/products/batch", {"update": items})
 
     def create_product(self, payload: dict):
-        """Used only by tools/create_drafts.py, which always sends status=draft."""
-        if payload.get("status") != "draft":
-            raise ValueError("create_product only creates drafts")
+        """Used only by tools/create_drafts.py. Creates; never updates an existing product.
+        status "publish" is allowed since the owner's go-live approval (15 Oct 2026)."""
+        if "id" in payload or payload.get("status") not in ("draft", "publish"):
+            raise ValueError("create_product only creates new draft or published products")
         return self._post("/products", payload)
 
     def batch_variations(self, product_id: int, items: list):

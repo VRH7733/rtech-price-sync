@@ -85,6 +85,7 @@ def test_live_run_publishes_cheapest_and_updates_state(cfg, tmp_path):
 
 
 def test_spread_over_5pct_holds_price_and_writes_flag(cfg, tmp_path):
+    cfg = dataclasses.replace(cfg, pricing=dataclasses.replace(cfg.pricing, rule="spread", big_move_pct=D(15)))
     state = {"version": 1, "items": {"PC-1": {"price": "950", "last_ok": "2026-10-13", "hidden": False}}}
     woo = FakeWoo()
     rr = go(cfg, [make_row()], state, FakeFetcher(pages(1000, 1100, 1010)), woo, publish=True)

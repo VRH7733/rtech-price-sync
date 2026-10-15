@@ -59,7 +59,25 @@ def test_failed_create_leaves_the_row_unlinked():
     assert out == [("RT-POLY-001", "create_failed_http_429", None)] and rs[0].wc_product_id is None
 
 
-def test_client_refuses_anything_but_a_draft():
+def test_client_only_creates_new_draft_or_published_products():
     c = WooClient("https://shop.example", "k", "s", session=object())
     with pytest.raises(ValueError):
-        c.create_product({"sku": "X", "status": "publish"})
+        c.create_product({"sku": "X", "status": "pending"})
+    with pytest.raises(ValueError):
+        c.create_product({"id": 5, "sku": "X", "status": "publish"})  # never an update
+
+
+def test_live_products_are_in_stock_quote_products_and_become_publish_yes():
+    from rtech_sync.config import load_config
+    from pathlib import Path
+    cfg = load_config(Path(__file__).resolve().parent.parent / "config.yaml",
+                      env={"RTECH_CONTACT_EMAIL": "x@example.com"}).publisher
+    shop, rs = FakeShop(), rows()
+    rs[0].category = "Wires & Cables"
+    out = create_drafts(rs, ["RT-POLY-001"], shop, apply=True, sleep=lambda s: None, live_cfg=cfg)
+    p = [c for c in shop.calls if c[0] == "create"][0][2]
+    assert out[0][1] == "created_live" and rs[0].publish == "yes"
+    assert p["status"] == "publish" and p["type"] == "external" and p["regular_price"] == ""
+    assert p["stock_status"] == "instock" and p["button_text"] == "Request a Quote"
+    assert p["external_url"].endswith("rte_product_sku=RT-POLY-001&rte_cta=quote")
+    assert p["categories"] == [{"id": 25}]

@@ -89,3 +89,30 @@ def test_invariants_with_the_outlier_guard_on():
             lo = min(trusted)
             if (max(trusted) - lo) / lo * 100 >= 5:
                 assert "spread_over_5pct" in d.flags
+
+
+def test_invariants_of_the_cheapest_rule():
+    cfg = PricingCfg(rule="cheapest", outlier_ratio=D(2), big_move_pct=D(40))
+    rng = random.Random(20261016)
+    for _ in range(20000):
+        row, results, st = rand_case(rng)
+        d = decide(row, results, st, cfg, TODAY)
+        assert d.action in ("publish", "hold", "hide")
+        if d.action != "publish":
+            assert d.price is None and not d.refreshed
+            continue
+        assert d.price > 0
+        if row.manual_price is not None:
+            assert d.price == row.manual_price
+            continue
+        usable = [r.price for r in results if r.usable]
+        assert usable and d.price >= min(usable)  # never below every source
+        if len(usable) == 3:
+            lo, mid, _ = sorted(usable)
+            if lo * 2 < mid:
+                assert d.price >= mid  # a price below half of both others is never used
+        assert d.price <= max(usable) * (1 + (row.markup_pct or D(0)) / 100) + 1  # a real source price
+        if row.cost_floor is not None:
+            assert d.price >= row.cost_floor
+        if st.price and st.price > 0 and not st.hidden and abs(d.price - st.price) / st.price * 100 > 40:
+            assert st.pending is not None  # a big move only goes out when it repeated

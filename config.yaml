@@ -22,8 +22,13 @@ sources:
     assumed_tax_basis: incl_gst
 
 pricing:
-  spread_flag_pct: 5               # spread >= this => flag and hold previous price
-  big_move_pct: 15                 # price move > this vs last published => flag "big_move"
+  # Owner's go-live approval (15 Oct 2026, in the project thread): publish the CHEAPEST price of
+  # HomeRun, Moglix and IndustryBuying every day, single-site prices included. Guards: a listing
+  # more than outlier_ratio x away from the others is ignored; a move > big_move_pct is held one
+  # day and published when it repeats. "spread" = the earlier 5% agreement rule.
+  rule: cheapest
+  spread_flag_pct: 5               # spread rule only: spread >= this => flag and hold
+  big_move_pct: 40                 # cheapest rule: a move > this is held one day (was 15, spread rule)
   big_move_holds: false            # true => also hold the price when big_move fires
   single_source_max_move_pct: 5    # with one source, publish only if within this of last price
   # Owner's STOP 2 decision (15 Oct 2026): a site priced more than 2x the cheapest OTHER site is a
@@ -51,6 +56,11 @@ fetch:
 
 publisher:
   batch_size: 25
+  # No price from any site => in stock, no price, "Request a Quote" button to the shop's own quote
+  # form (the same page the P6 Sprint buttons use). Owner's go-live approval, 15 Oct 2026.
+  quote_external: true
+  quote_button_text: "Request a Quote"
+  quote_url: "https://rtechelectricals.com/request-best-price/?rte_product_sku={sku}&rte_cta=quote"
   pause_seconds: 2
   backoff_seconds: [5, 15, 45, 120]
   backoff_statuses: [429, 502, 503, 504, 508]

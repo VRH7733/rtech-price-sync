@@ -186,14 +186,16 @@ def _classify(d: Decision, results: list) -> None:
 def _decide_cheapest(row: Row, results: list, state: PriceState, cfg: PricingCfg, today: date) -> Decision:
     d = Decision(sku=row.sku, action="hold")
     _classify(d, results)
-    usable, ignored = split_outliers([r for r in results if r.usable], cfg.outlier_ratio)
-    for r in ignored:
-        d.flags.append(f"outlier_ignored:{r.source}")
+    usable = [r for r in results if r.usable]
     if cfg.outlier_ratio and cfg.outlier_ratio > 0 and len(usable) >= 3:
+        # checked first: with three sites, a price below half of BOTH others is a likely wrong match
         ranked = sorted(usable, key=lambda r: r.price)
-        if ranked[0].price * cfg.outlier_ratio < ranked[1].price:  # below half of BOTH others
+        if ranked[0].price * cfg.outlier_ratio < ranked[1].price:
             d.flags.append(f"low_outlier_ignored:{ranked[0].source}")
             usable = ranked[1:]
+    usable, ignored = split_outliers(usable, cfg.outlier_ratio)
+    for r in ignored:
+        d.flags.append(f"outlier_ignored:{r.source}")
     markup = row.markup_pct if row.markup_pct is not None else cfg.default_markup_pct
     candidate: Optional[Decimal] = None
     if not usable:

@@ -1,4 +1,5 @@
 """Regression tests for bugs found by the independent review (14 Oct 2026)."""
+import dataclasses
 import json
 from datetime import date, timedelta
 from decimal import Decimal as D
@@ -24,6 +25,8 @@ from rtech_sync.urlcheck import is_search_url
 ROOT = Path(__file__).resolve().parent.parent
 TODAY = date(2026, 10, 14)
 CFG = load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
+# the earlier 5%-agreement rule, still supported (config pricing.rule: spread)
+SPREAD = dataclasses.replace(CFG.pricing, rule="spread", big_move_pct=D(15))
 
 
 def row(**kw):
@@ -265,15 +268,19 @@ def test_manual_price_zero_is_rejected_by_validation():
 
 
 def test_zero_baseline_does_not_crash_single_source():
-    d = decide(row(), [SourceResult("moglix", "ok", price=D(100))], PriceState(price=D(0)), CFG.pricing, TODAY)
+    d = decide(row(), [SourceResult("moglix", "ok", price=D(100))], PriceState(price=D(0)), SPREAD, TODAY)
     assert "single_source_no_baseline" in d.flags and pct_change(D(1), D(0)) > 1000
+    d = decide(row(), [SourceResult("moglix", "ok", price=D(100))], PriceState(price=D(0)), CFG.pricing, TODAY)
+    assert d.action == "publish" and d.price == D(100)  # cheapest rule: a zero baseline is no baseline
 
 
 # ---- 9. old prices must not stay live ----------------------------------------------------------
 def test_never_validated_row_is_hidden_after_stale_days():
     st = PriceState(price=None, last_ok=None, first_seen=TODAY - timedelta(days=3))
-    d = decide(row(), [SourceResult("moglix", "error")], st, CFG.pricing, TODAY)
+    d = decide(row(), [SourceResult("moglix", "error")], st, SPREAD, TODAY)
     assert d.action == "hide" and "stale" in d.flags
+    d = decide(row(), [SourceResult("moglix", "error")], st, CFG.pricing, TODAY)
+    assert d.action == "hide" and "stale" in d.info  # cheapest rule: shown as Request a Quote
 
 
 def test_first_seen_is_recorded_in_live_runs_only():
@@ -352,5 +359,5 @@ def test_units_still_join_after_the_fix():
 # ---- suspected items we chose to make strict ------------------------------------------------
 def test_single_source_exactly_5pct_move_is_held_like_a_5pct_spread():
     d = decide(row(), [SourceResult("moglix", "ok", price=D(105))], PriceState(price=D(100), last_ok=TODAY),
-               CFG.pricing, TODAY)
+               SPREAD, TODAY)
     assert d.action == "hold" and "single_source_jump" in d.flags
