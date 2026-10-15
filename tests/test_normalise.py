@@ -84,3 +84,10 @@ def test_pack_of_one_is_not_a_multipack():
 def test_page_with_two_different_pack_counts_is_refused():
     page = "Switch (Pack of 5) also sold as box of 20"
     assert check_variant("switch", "pack of 5", page).status == "pack_mismatch"
+
+
+def test_line_name_plus_matches_across_spellings():
+    # real: IndustryBuying/HomeRun "Optima+", Moglix slug "optima-plus" (15 Oct 2026)
+    assert check_variant("optima+; 1.5 sq mm; red", "90 m", "Polycab Optima Plus 1.5 sqmm red 90m").status == "ok"
+    assert check_variant("optima+; 1.5 sq mm; red", "90 m", "Polycab Optima+ 1.5 Sq.mm Red (90 m)").status == "ok"
+    assert check_variant("optima+; 1.5 sq mm", "90 m", "Polycab Optima 1.5 sqmm 90m").status == "variant_unconfirmed"

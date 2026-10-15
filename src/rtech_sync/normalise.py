@@ -27,6 +27,8 @@ def normalise_text(s: str) -> str:
     s = (s or "").lower().replace("×", "x").replace(" ", " ")
     for pat, repl in _UNIT_SYNONYMS:
         s = pat.sub(repl, s)
+    # product lines are written "Optima+" on one site and "optima-plus"/"Optima Plus" on another
+    s = re.sub(r"(?<=[a-z])\s+plus\b", "+", s)
     s = _JOIN_UNIT.sub(r"\1\2", s)  # "90 m" -> "90m" (known units only; "1 red" stays apart)
     s = re.sub(r"\s+", " ", s)
     return s.strip()
