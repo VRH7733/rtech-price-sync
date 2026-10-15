@@ -90,6 +90,12 @@ class WooClient:
     def batch_products(self, items: list):
         return self._post("/products/batch", {"update": items})
 
+    def create_product(self, payload: dict):
+        """Used only by tools/create_drafts.py, which always sends status=draft."""
+        if payload.get("status") != "draft":
+            raise ValueError("create_product only creates drafts")
+        return self._post("/products", payload)
+
     def batch_variations(self, product_id: int, items: list):
         return self._post(f"/products/{product_id}/variations/batch", {"update": items})
 
