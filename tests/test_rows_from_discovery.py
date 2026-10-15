@@ -10,6 +10,10 @@ def cand(src, url, title, variant="", price="100", fetched="yes"):
 def test_pack_and_category_from_real_titles():
     assert pack_of("Polycab Optima+ 1.5 Sq.mm 1 Core FRLF Wire Black (90 m)") == "90 m"
     assert pack_of("Polycab Optima+ Wire LF FR 180 Meters / 1.5 Sqmm / Red") == "180 m"
+    assert pack_of("Finolex FR Wire (200/300 meter) 4 Sqmm(200m Coil) / Red") == "200 m"
+    assert pack_of("Standard by Havells Combined Plate 8 M (V) IVY Series White") == ""
+    assert pack_of("Havells Crabtree ACAPNCWV12 Athena 12M Modular Combined Plates") == ""
+    assert pack_of("GM Cuba 16A 2+2 Extension Board with Extension Cord 5M") == "5 m"
     assert pack_of("Polycab Coupler 32 mm Outer Diameter UPVC Material Black Color (Pack of 24)") == "pack of 24"
     assert category_of("Polycab Coupler 32 mm") == "Pipes & Fittings"
     assert category_of("Havells Euro II 63A Single Pole C Curve MCB") == "Switchgear"

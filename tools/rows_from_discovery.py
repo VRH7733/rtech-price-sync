@@ -53,17 +53,24 @@ CATEGORY = [
 ]
 
 
-_LEN = re.compile(r"(?<![0-9.x])(\d+(?:\.\d+)?)m(?![0-9a-z])")
+_LEN = re.compile(r"(?<![0-9.x])(\d+(?:\.\d+)?)m(?![0-9a-z])(?!\s?modul)")
+_COIL = re.compile(r"(\d+(?:\.\d+)?)\s*m(?:eters?|etres?)?\s*coil", re.I)
+_LENGTHY = re.compile(r"wire|cable|cord|pipe|conduit|flex|coil|meter|metre", re.I)  # things sold by length
 
 
 def pack_of(title: str) -> str:
     m = PACK_N.search(title)
     if m and int(m.group(1)) > 1:
         return f"pack of {m.group(1)}"
-    m = PACK_M.search(title) or _LEN.search(normalise_text(title))  # "(90 m)", "90 Meters"
+    m = _COIL.search(title)  # "(200/300 meter) 4 Sqmm(200m Coil)": the coil is what is sold
+    if m:
+        return f"{m.group(1)} m"
+    m = PACK_M.search(title)  # "(90 m)", ", 90 m"
+    if not m and _LENGTHY.search(title):
+        m = _LEN.search(normalise_text(title))  # "90 Meters"
     if m:
         return f"{m.group(1) or m.group(2)} m"
-    return ""
+    return ""  # "Combined Plate 8 M", "Athena 12M Modular": modules, not metres
 
 
 def category_of(title: str) -> str:
