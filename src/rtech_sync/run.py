@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from . import report
 from .catalogue import CatalogueError, load_catalogue, validate
 from .config import Config, ConfigError, load_config
-from .siblings import apply_sibling_guard
+from .siblings import apply_listing_guard, apply_sibling_guard
 from .decision import decide
 from .fetcher import Fetcher
 from .models import SourceResult
@@ -121,6 +121,7 @@ def run_sync(
 
     if cfg.pricing.rule == "cheapest":
         apply_sibling_guard(rr.items, cfg.pricing.sibling_ratio)
+        apply_listing_guard(rr.items, cfg.pricing.needs_second_site)
 
     for it in rr.items:
         r, d, ps = it["row"], it["decision"], it["ps"]

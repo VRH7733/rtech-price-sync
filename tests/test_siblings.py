@@ -60,3 +60,25 @@ def test_needs_two_references_and_same_length_and_can_be_off():
             item("B", wire("Red"), {"homerun": "4400"}), item("C", wire("Blue"), {"homerun": "4500"})]
     assert apply_sibling_guard(full, D(0)) == [] and full[0]["decision"].action == "publish"
     assert apply_sibling_guard(full, D(2)) == ["A"]
+
+
+def test_seller_listing_alone_becomes_quote_but_counts_with_a_second_site():
+    from rtech_sync.siblings import apply_listing_guard
+    pats = {"industrybuying": "-ELE."}
+    alone = item("A", "Legrand Cable Tie 357mm (Pack of 100 Pcs)", {"industrybuying": "18879"}, pack="pack of 100")
+    alone["row"].urls = {"industrybuying": "https://www.industrybuying.com/cable-ties-legrand-ELE.CAB.133447955"}
+    own = item("B", "Polycab wire", {"industrybuying": "4465"})
+    own["row"].urls = {"industrybuying": "https://www.industrybuying.com/x-polycab-EL.CA.HO.HA.169619"}
+    pair = item("C", "Polycab wire", {"industrybuying": "4800", "homerun": "4875"})
+    pair["row"].urls = {"industrybuying": "https://x/y-ELE.FLA.1", "homerun": "https://h/z"}
+    assert apply_listing_guard([alone, own, pair], pats) == ["A"]
+    d = alone["decision"]
+    assert d.action == "hide" and d.price is None and d.flags == ["unconfirmed_listing:industrybuying"]
+    assert apply_listing_guard([own], {}) == []
+
+
+def test_config_loads_the_seller_listing_rule():
+    from pathlib import Path
+    from rtech_sync.config import load_config
+    cfg = load_config(Path(__file__).resolve().parent.parent / "config.yaml", env={"RTECH_CONTACT_EMAIL": "x@example.com"})
+    assert cfg.pricing.needs_second_site == {"industrybuying": "-ELE."} and cfg.pricing.sibling_ratio == 2

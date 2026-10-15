@@ -73,3 +73,25 @@ def apply_sibling_guard(items: list, ratio: Decimal, min_refs: int = 2) -> list:
                 d.note = f"price {price} vs {len(refs)} same-size siblings, median {mid}"
                 changed.append(it["row"].sku)
     return changed
+
+
+def apply_listing_guard(items: list, patterns: dict) -> list:
+    """A price that rests on ONE listing whose URL matches patterns[site] (e.g. IndustryBuying
+    "-ELE." seller listings, every one of which that another site also had was 2-9x dearer on
+    15 Oct 2026) is not published: the product shows Request a Quote, flag
+    "unconfirmed_listing:<site>". With a second site the outlier guard decides instead."""
+    changed = []
+    if not patterns:
+        return changed
+    for it in items:
+        d = it["decision"]
+        usable = [x for x in it["results"] if x.usable]
+        if d.action != "publish" or d.price is None or len(usable) != 1:
+            continue
+        src = usable[0].source
+        pat = patterns.get(src)
+        if pat and pat in (it["row"].urls.get(src) or ""):
+            d.action, d.price, d.pending, d.refreshed = "hide", None, None, False
+            d.flags.append(f"unconfirmed_listing:{src}")
+            changed.append(it["row"].sku)
+    return changed

@@ -32,6 +32,9 @@ class PricingCfg:
     # cheapest rule: a single-site wire price more than this many times the median of the same
     # size in other colours/lines (priced elsewhere) is not published. 0 = off. See siblings.py.
     sibling_ratio: Decimal = Decimal("0")
+    # cheapest rule: {site: URL part}. A listing whose URL contains it is only trusted when a
+    # second site also has the product (siblings.apply_listing_guard). Empty = off.
+    needs_second_site: dict = field(default_factory=dict)
     default_markup_pct: Decimal = Decimal("0")
     default_gst_pct: Decimal = Decimal("18")
     stale_days: int = 3
@@ -116,6 +119,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         single_source_max_move_pct=_dec(p, "single_source_max_move_pct", Decimal("5")),
         outlier_ratio=_dec(p, "outlier_ratio", Decimal("0")),
         sibling_ratio=_dec(p, "sibling_ratio", Decimal("0")),
+        needs_second_site={str(k): str(v) for k, v in (p.get("needs_second_site") or {}).items()},
         rule=str(p.get("rule", "spread")),
         default_markup_pct=_dec(p, "default_markup_pct", Decimal("0")),
         default_gst_pct=_dec(p, "default_gst_pct", Decimal("18")),
