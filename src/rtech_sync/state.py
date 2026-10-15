@@ -27,6 +27,7 @@ def get_price_state(state: dict, sku: str) -> PriceState:
         last_ok=date.fromisoformat(item["last_ok"]) if item.get("last_ok") else None,
         hidden=bool(item.get("hidden", False)),
         first_seen=date.fromisoformat(item["first_seen"]) if item.get("first_seen") else None,
+        pending=Decimal(item["pending"]) if item.get("pending") not in (None, "") else None,
     )
 
 

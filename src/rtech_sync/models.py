@@ -88,3 +88,4 @@ class PriceState:
     last_ok: Optional[date] = None  # last day a price was validated and published
     hidden: bool = False
     first_seen: Optional[date] = None  # first day the bot saw this row (starts the stale clock)
+    pending: Optional[Decimal] = None  # cheapest mode: a big move held yesterday, waiting to repeat

@@ -25,6 +25,10 @@ class PricingCfg:
     # a source priced more than this many times the cheapest OTHER usable source is ignored as a
     # listing error and flagged (owner's STOP 2 decision, 15 Oct 2026). 0 = off.
     outlier_ratio: Decimal = Decimal("0")
+    # "spread": the original rule (publish the cheapest only when all sources agree within
+    # spread_flag_pct). "cheapest": the owner's 15 Oct 2026 go-live rule: publish the cheapest
+    # trusted source every day, one source is enough, a big move must repeat the next day.
+    rule: str = "spread"
     default_markup_pct: Decimal = Decimal("0")
     default_gst_pct: Decimal = Decimal("18")
     stale_days: int = 3
@@ -65,6 +69,12 @@ class PublisherCfg:
     history_keep_days: int = 30
     set_instock: bool = True  # force stock_status=instock on priced items (fixes the SOLD OUT badge)
     clear_sale_price: bool = True  # an old sale_price would override the synced regular_price
+    # quote_external: a product without a price becomes a WooCommerce "external" product whose
+    # button says quote_button_text and links to quote_url (in stock, no SOLD OUT badge). A price
+    # turns it back into a "simple" product. Off = the original hide (empty price only).
+    quote_external: bool = False
+    quote_button_text: str = "Request a Quote"
+    quote_url: str = ""  # {sku} is replaced by the product's SKU
 
 
 @dataclass(frozen=True)
@@ -102,6 +112,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         big_move_holds=bool(p.get("big_move_holds", False)),
         single_source_max_move_pct=_dec(p, "single_source_max_move_pct", Decimal("5")),
         outlier_ratio=_dec(p, "outlier_ratio", Decimal("0")),
+        rule=str(p.get("rule", "spread")),
         default_markup_pct=_dec(p, "default_markup_pct", Decimal("0")),
         default_gst_pct=_dec(p, "default_gst_pct", Decimal("18")),
         stale_days=int(p.get("stale_days", 3)),
@@ -118,6 +129,9 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
     )
     publisher = PublisherCfg(
         batch_size=int(pub.get("batch_size", 25)),
+        quote_external=bool(pub.get("quote_external", False)),
+        quote_button_text=str(pub.get("quote_button_text", "Request a Quote")),
+        quote_url=str(pub.get("quote_url", "")),
         pause_seconds=float(pub.get("pause_seconds", 2)),
         backoff_seconds=tuple(pub.get("backoff_seconds", (5, 15, 45, 120))),
         backoff_statuses=tuple(pub.get("backoff_statuses", (429, 502, 503, 504, 508))),
