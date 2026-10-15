@@ -6,6 +6,14 @@ Rules (set by the shop owner):
   * exactly 1 usable source         -> publish only if within 5% of last published price
   * manual_price set                -> publish it, skip all auto logic; flag "market_below_manual"
                                        when a marketplace (fetched) is cheaper than it
+Rule "cheapest" (owner's go-live decision, 15 Oct 2026; config pricing.rule):
+  * publish the CHEAPEST trusted source (+ markup); one source is enough, the spread is reported
+  * a cheapest price that is below 1/outlier_ratio of BOTH of two other sources is a likely wrong
+    match: ignored ("low_outlier_ignored:<source>")
+  * a move > big_move_pct vs the live price is held one day ("big_move_held") and published when
+    the next run finds the same price again (within single_source_max_move_pct)
+  * cost_floor, manual_price and the stale guard work as above
+
   * outlier_ratio > 0               -> a source priced more than outlier_ratio x the cheapest OTHER
                                        usable source is ignored ("outlier_ignored:<source>") before
                                        the rules above are applied to the remaining sources
@@ -37,6 +45,7 @@ class Decision:
     cheapest_source: Optional[str] = None
     refreshed: bool = False  # True => price validated this run (updates last_ok)
     note: str = ""
+    pending: Optional[Decimal] = None  # cheapest rule: a held big move, saved for tomorrow's check
 
 
 def round_up_rupee(x: Decimal) -> Decimal:
@@ -95,6 +104,9 @@ def decide(
             if cheapest.price < row.manual_price:
                 d.flags.append(f"market_below_manual:{cheapest.source}")
         return d
+
+    if cfg.rule == "cheapest":
+        return _decide_cheapest(row, results, state, cfg, today)
 
     d = Decision(sku=row.sku, action="hold")
 
@@ -160,4 +172,61 @@ def decide(
     if ref is not None and (today - ref).days >= cfg.stale_days:
         d.action = "hide"
         d.flags.append("stale")
+    return d
+
+
+def _classify(d: Decision, results: list) -> None:
+    for r in results:
+        if r.status in ATTENTION_STATUSES:
+            d.flags.append(f"{r.status}:{r.source}")
+        elif r.status in INFO_STATUSES:
+            d.info.append(f"{r.status}:{r.source}")
+
+
+def _decide_cheapest(row: Row, results: list, state: PriceState, cfg: PricingCfg, today: date) -> Decision:
+    d = Decision(sku=row.sku, action="hold")
+    _classify(d, results)
+    usable, ignored = split_outliers([r for r in results if r.usable], cfg.outlier_ratio)
+    for r in ignored:
+        d.flags.append(f"outlier_ignored:{r.source}")
+    if cfg.outlier_ratio and cfg.outlier_ratio > 0 and len(usable) >= 3:
+        ranked = sorted(usable, key=lambda r: r.price)
+        if ranked[0].price * cfg.outlier_ratio < ranked[1].price:  # below half of BOTH others
+            d.flags.append(f"low_outlier_ignored:{ranked[0].source}")
+            usable = ranked[1:]
+    markup = row.markup_pct if row.markup_pct is not None else cfg.default_markup_pct
+    candidate: Optional[Decimal] = None
+    if not usable:
+        statuses = {r.status for r in results}
+        if statuses <= {"no_url"}:
+            d.flags.append("no_urls")
+        elif not statuses <= {"no_url", "not_refreshed"}:
+            d.info.append("no_price_today")  # quote after stale_days; not an owner task
+    else:
+        cheapest = min(usable, key=lambda r: r.price)
+        d.cheapest_source = cheapest.source
+        if len(usable) >= 2:
+            d.spread_pct = spread_pct([r.price for r in usable])
+        candidate = apply_markup(cheapest.price, markup)
+
+    if candidate is not None and row.cost_floor is not None and candidate < row.cost_floor:
+        d.flags.append("below_cost_floor")
+        candidate = None
+    if candidate is not None and state.price is not None and state.price > 0 and not state.hidden:
+        if pct_change(candidate, state.price) > cfg.big_move_pct:
+            confirmed = state.pending is not None and pct_change(candidate, state.pending) <= cfg.single_source_max_move_pct
+            if confirmed:
+                d.info.append("big_move_confirmed")
+            else:
+                d.flags.append("big_move_held")
+                d.pending = candidate
+                candidate = None
+
+    if candidate is not None:
+        d.action, d.price, d.refreshed = "publish", candidate, True
+        return d
+    ref = state.last_ok or state.first_seen
+    if d.pending is None and ref is not None and (today - ref).days >= cfg.stale_days:
+        d.action = "hide"  # shown as Request a Quote
+        d.info.append("stale")
     return d

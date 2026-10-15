@@ -167,6 +167,7 @@ def run_sync(
         snapshot = {x.source: str(x.price) for x in it["results"] if x.usable}
         if snapshot:
             set_item(state, r.sku, sources=snapshot)
+        set_item(state, r.sku, pending=d.pending if d.pending is not None else "")
         if d.action == "publish" and applied:
             set_item(state, r.sku, price=d.price, last_ok=today.isoformat(), hidden=False)
         elif d.action == "hide" and applied:
