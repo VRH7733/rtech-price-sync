@@ -4,12 +4,13 @@ name: daily-prices
 # catalogue (catalogue/rows/*.csv) and the run data (data/). The private repo is checked out with
 # the DATA_REPO_TOKEN secret; nothing private is committed here, and the public log shows counts.
 #
-# The nightly schedule is OFF until the owner approves going live (STOP 3 in docs/SPEC.md).
-# To turn it on, uncomment the two schedule lines. 18:30 UTC = 00:00 IST; GitHub may start
-# scheduled runs late, and may drop them under heavy load.
+# Daily run, owner's go-live approval (15 Oct 2026, in the project thread): every morning at
+# 05:00 IST (23:30 UTC the evening before) it PUBLISHES the cheapest price of the three sites for
+# catalogue rows with publish=yes and a shop product id. GitHub may start scheduled runs late,
+# and may drop them under heavy load. A manual run is a dry run unless mode=publish is given.
 on:
-  # schedule:
-  #   - cron: "30 18 * * *"
+  schedule:
+    - cron: "30 23 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -41,7 +42,7 @@ jobs:
     env:
       PYTHONPATH: src
       RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
-      MODE: ${{ github.event.inputs.mode || vars.PUBLISH_MODE || 'dry-run' }}
+      MODE: ${{ github.event_name == 'schedule' && 'publish' || github.event.inputs.mode || 'dry-run' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -110,6 +111,10 @@ jobs:
           if [ -f pd/data/flags_issue.md ]; then
             R=VRH7733/rtech-price-data
             gh label create price-flag -R $R --color D93F0B --force || true
+            # keep one open flags issue: close the older ones (they stay readable)
+            for n in $(gh issue list -R $R --label price-flag --state open --json number --jq '.[].number' || true); do
+              gh issue close "$n" -R $R --comment "Superseded by the newer flags issue." || true
+            done
             gh issue create -R $R --title "Price flags $(TZ=Asia/Kolkata date +%F) [$MODE]" \
               --label price-flag --body-file pd/data/flags_issue.md \
               || echo "::warning::could not open the flags issue (token needs Issues: write); flags are in data/flags.csv"
