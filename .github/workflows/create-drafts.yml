@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       catalogue:
-        description: "catalogue file in the data repo, e.g. catalogue/rows/polycab.csv"
+        description: "catalogue file(s) in the data repo, space-separated, e.g. catalogue/rows/polycab.csv"
         required: true
       skus:
         description: "SKUs separated by spaces, e.g. RT-POLY-001 RT-POLY-002"
@@ -62,12 +62,18 @@ jobs:
           APPLY: ${{ github.event.inputs.apply }}
           LIVE: ${{ github.event.inputs.live }}
         run: |
-          case "$CATALOGUE" in catalogue/rows/*.csv) ;; *) echo "::error::catalogue must be catalogue/rows/<file>.csv"; exit 1;; esac
           ARGS=""
           for s in $SKUS; do ARGS="$ARGS --sku $s"; done
           if [ "$APPLY" = "true" ]; then ARGS="$ARGS --apply"; fi
           if [ "$LIVE" = "true" ]; then ARGS="$ARGS --live"; fi
-          python tools/create_drafts.py "pd/$CATALOGUE" $ARGS
+          rc=0
+          for f in $CATALOGUE; do  # several files allowed; each only touches its own SKUs
+            case "$f" in catalogue/rows/*.csv) ;; *) echo "::error::catalogue must be catalogue/rows/<file>.csv"; exit 1;; esac
+            echo "== $f"
+            python tools/create_drafts.py "pd/$f" $ARGS > out.txt || rc=1
+            grep -v ": not_in_catalogue$" out.txt || true
+          done
+          exit $rc
 
       - name: Save product ids to the private data repo
         if: github.event.inputs.apply == 'true'
