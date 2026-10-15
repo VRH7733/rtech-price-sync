@@ -16,6 +16,9 @@ on:
       max_pages:
         description: "max product pages fetched per site (IndustryBuying, HomeRun)"
         default: "150"
+      previous:
+        description: "continue an earlier run: its folder in the data repo, e.g. discovery/2026-10-15 (empty = fresh)"
+        default: ""
 
 permissions:
   contents: read
@@ -43,18 +46,30 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Checkout private data repo (earlier run)
+        if: github.event.inputs.previous != ''
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
       - name: Discover
         env:
           BRANDS: ${{ github.event.inputs.brands }}
           KEYWORDS: ${{ github.event.inputs.keywords }}
           MAX_PAGES: ${{ github.event.inputs.max_pages }}
           SOURCE: ${{ matrix.source }}
+          PREVIOUS: ${{ github.event.inputs.previous }}
         run: |
           mkdir -p out
           ARGS="--source $SOURCE --out out --max-pages $MAX_PAGES"
           for b in $BRANDS; do ARGS="$ARGS --brand $b"; done
           for k in $KEYWORDS; do ARGS="$ARGS --keyword $k"; done
           if [ "$SOURCE" != "moglix" ]; then ARGS="$ARGS --fetch"; fi
+          if [ -n "$PREVIOUS" ]; then
+            case "$PREVIOUS" in discovery/*) ;; *) echo "::error::previous must be discovery/<date>"; exit 1;; esac
+            ARGS="$ARGS --previous pd/$PREVIOUS/$SOURCE.csv"
+          fi
           python tools/discover.py $ARGS 2>&1 | tee out/log_$SOURCE.txt || true
       - uses: actions/upload-artifact@v4
         with:

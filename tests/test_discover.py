@@ -47,3 +47,25 @@ def test_homerun_page_becomes_one_row_per_variant_url():
     assert len(rows) > 1 and all("?variant=" in r["url"] for r in rows)
     r = next(r for r in rows if r["url"].endswith("50073590432059"))
     assert float(r["price"]) == 8567
+
+
+def test_previous_run_pages_are_reused_and_only_new_pages_count(tmp_path):
+    import csv
+    from discover import FIELDS, load_previous, plan_rows
+    old = tmp_path / "industrybuying.csv"
+    with open(old, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS)
+        w.writeheader()
+        w.writerow({"source": "industrybuying", "url": "https://x/a", "fetched": "yes", "price": "10"})
+        w.writerow({"source": "industrybuying", "url": "https://x/b", "fetched": "no"})
+        w.writerow({"source": "homerun", "url": "https://x/c?variant=1", "fetched": "yes", "price": "5"})
+        w.writerow({"source": "homerun", "url": "https://x/c?variant=2", "fetched": "yes", "price": "6"})
+    prev = load_previous(old)
+    got = []
+    rows, n = plan_rows(["https://x/a", "https://x/b", "https://x/c", "https://x/d"], prev, True, 1,
+                        lambda u: got.append(u) or [{"url": u, "fetched": "yes"}])
+    assert got == ["https://x/b"] and n == 1  # a and c reused, d over the cap
+    assert [r["url"] for r in rows] == ["https://x/a", "https://x/b", "https://x/c?variant=1",
+                                        "https://x/c?variant=2", "https://x/d"]
+    assert rows[0]["price"] == "10" and rows[-1]["fetched"] == "no"
+    assert load_previous("") == {} and load_previous(tmp_path / "missing.csv") == {}

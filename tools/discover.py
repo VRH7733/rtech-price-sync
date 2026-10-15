@@ -3,6 +3,10 @@
 
   python tools/discover.py --source moglix --brand polycab --brand vip --keyword wire --out out
   python tools/discover.py --source homerun --brand polycab --fetch --max-pages 80 --out out
+  python tools/discover.py --source industrybuying --brand havells --fetch --previous old/industrybuying.csv
+
+--previous: a CSV from an earlier run. Pages fetched there are copied, not fetched again, so a
+second run continues where the first stopped (--max-pages counts only new fetches).
 
 Rules (same as the nightly run): robots.txt is checked for every request by the repo's Fetcher,
 >= 3 s per host, honest User-Agent, no search pages. Sitemaps only, plus (with --fetch) the
@@ -88,6 +92,31 @@ def fetch_rows(fetcher, source, url):
                  identity=p.identity_text[:300])]
 
 
+def load_previous(path) -> dict:
+    """Earlier fetched rows by page URL (HomeRun ?variant= rows grouped under their page)."""
+    prev = {}
+    if not path or not Path(path).exists():
+        return prev
+    with open(path, newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            if r.get("fetched") == "yes":
+                prev.setdefault(r["url"].split("?variant=")[0], []).append({k: r.get(k, "") for k in FIELDS})
+    return prev
+
+
+def plan_rows(urls, prev, fetch, max_pages, fetch_one):
+    rows, fetched = [], 0
+    for u in urls:
+        if u in prev:
+            rows += prev[u]
+        elif fetch and fetched < max_pages:
+            rows += fetch_one(u)
+            fetched += 1
+        else:
+            rows.append({"source": "", "url": u, "slug": slug_text(u), "fetched": "no"})
+    return rows, fetched
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", required=True, choices=list(ROOT_SITEMAPS))
@@ -95,6 +124,7 @@ def main(argv=None) -> int:
     ap.add_argument("--keyword", action="append", default=[], help="URL must also contain one of these")
     ap.add_argument("--fetch", action="store_true", help="also fetch candidate pages (IB/HomeRun)")
     ap.add_argument("--max-pages", type=int, default=100)
+    ap.add_argument("--previous", default="", help="earlier <source>.csv: reuse its fetched pages")
     ap.add_argument("--out", default="out")
     ap.add_argument("--config", default=os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
     a = ap.parse_args(argv)
@@ -107,12 +137,11 @@ def main(argv=None) -> int:
     t0 = time.monotonic()
     urls, n_sitemaps = collect(fetcher, a.source, brands, keywords, print)
     print(f"{a.source}: {len(urls)} candidate URLs from {n_sitemaps} sitemaps")
-    rows = []
-    for i, u in enumerate(urls):
-        if a.fetch and i < a.max_pages:
-            rows += fetch_rows(fetcher, a.source, u)
-        else:
-            rows.append({"source": a.source, "url": u, "slug": slug_text(u), "fetched": "no"})
+    prev = load_previous(a.previous)
+    rows, fetched = plan_rows(urls, prev, a.fetch, a.max_pages, lambda u: fetch_rows(fetcher, a.source, u))
+    for r in rows:
+        r["source"] = a.source
+    print(f"{a.source}: {fetched} pages fetched now, {sum(1 for u in urls if u in prev)} reused from --previous")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     with open(out / f"{a.source}.csv", "w", newline="", encoding="utf-8") as fh:
