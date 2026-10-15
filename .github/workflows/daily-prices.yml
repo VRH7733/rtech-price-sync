@@ -31,7 +31,7 @@ permissions:
 
 # Never let two runs overlap (they would hit the marketplaces twice as fast).
 concurrency:
-  group: daily-prices
+  group: marketplace-fetch  # shared with discover.yml: one client per site at a time
   cancel-in-progress: false
 
 jobs:

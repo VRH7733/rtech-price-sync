@@ -20,6 +20,11 @@ on:
 permissions:
   contents: read
 
+# shared with daily-prices.yml so the sites never see two of our clients at once
+concurrency:
+  group: marketplace-fetch
+  cancel-in-progress: false
+
 jobs:
   site:
     runs-on: ubuntu-latest
