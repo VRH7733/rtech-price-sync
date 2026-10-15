@@ -203,10 +203,21 @@ def test_time_budget_exhausted_marks_not_refreshed_not_flagged(cfg):
 
 
 def test_manual_price_published_without_fetching(cfg):
+    no_fetch = dataclasses.replace(cfg, pricing=dataclasses.replace(cfg.pricing, fetch_for_manual_rows=False))
+    f = FakeFetcher(pages(1000, 1010, 1020))
+    woo = FakeWoo()
+    rr = go(no_fetch, [make_row(manual_price=D("1234"))], {"version": 1, "items": {}}, f, woo, publish=True)
+    assert f.calls == [] and woo.calls[0][2][0]["regular_price"] == "1234"
+
+
+def test_manual_price_rows_are_fetched_and_flag_a_cheaper_market(cfg):
+    assert cfg.pricing.outlier_ratio == 2
+    assert cfg.pricing.fetch_for_manual_rows  # owner's STOP 2 decision: tell me when the market is cheaper
     f = FakeFetcher(pages(1000, 1010, 1020))
     woo = FakeWoo()
     rr = go(cfg, [make_row(manual_price=D("1234"))], {"version": 1, "items": {}}, f, woo, publish=True)
-    assert f.calls == [] and woo.calls[0][2][0]["regular_price"] == "1234"
+    assert len(f.calls) == 3 and woo.calls[0][2][0]["regular_price"] == "1234"
+    assert rr.items[0]["decision"].flags == ["market_below_manual:moglix"]
 
 
 def test_oldest_refreshed_rows_are_processed_first_and_limit_applies(cfg):

@@ -62,3 +62,30 @@ def test_invariants_hold_over_20000_random_cases():
         # a hold with an old validated price must never leave it live beyond stale_days
         if d.action == "hold" and st.last_ok is not None:
             assert (TODAY - st.last_ok).days < CFG.stale_days
+
+
+def test_invariants_with_the_outlier_guard_on():
+    cfg = PricingCfg(outlier_ratio=D(2))
+    rng = random.Random(20261015)
+    for _ in range(20000):
+        row, results, st = rand_case(rng)
+        d = decide(row, results, st, cfg, TODAY)
+        usable = [r for r in results if r.usable]
+        ignored = {f.split(":")[1] for f in d.flags if f.startswith("outlier_ignored:")}
+        for r in usable:  # only a source over 2x the cheapest other one is ever ignored
+            if r.source in ignored:
+                assert r.price > 2 * min(o.price for o in usable if o is not r)
+        trusted = [r.price for r in usable if r.source not in ignored]
+        if usable:
+            assert min(r.price for r in usable) in trusted  # the cheapest is never ignored
+        if d.action == "publish" and row.manual_price is None:
+            lo = min(trusted)
+            if len(trusted) >= 2:
+                assert (max(trusted) - lo) / lo * 100 < 5, (trusted, d)
+            assert d.price >= lo
+            if len(trusted) == 1:
+                assert st.price is not None and abs(d.price - st.price) / st.price * 100 <= 5
+        if d.action != "publish" and row.manual_price is None and len(trusted) >= 2:
+            lo = min(trusted)
+            if (max(trusted) - lo) / lo * 100 >= 5:
+                assert "spread_over_5pct" in d.flags

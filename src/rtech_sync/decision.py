@@ -4,7 +4,11 @@ Rules (set by the shop owner):
   * 2+ usable sources, spread < 5%  -> publish the CHEAPEST source price (+ markup, default 0%)
   * 2+ usable sources, spread >= 5% -> HOLD previous price and FLAG ("spread_over_5pct")
   * exactly 1 usable source         -> publish only if within 5% of last published price
-  * manual_price set                -> publish it, skip all auto logic
+  * manual_price set                -> publish it, skip all auto logic; flag "market_below_manual"
+                                       when a marketplace (fetched) is cheaper than it
+  * outlier_ratio > 0               -> a source priced more than outlier_ratio x the cheapest OTHER
+                                       usable source is ignored ("outlier_ignored:<source>") before
+                                       the rules above are applied to the remaining sources
   * below cost_floor                -> hold and flag
   * move > 15% vs last published    -> flag "big_move" (hold only if configured)
   * no validated price for stale_days -> hide the price ("stale")
@@ -54,6 +58,17 @@ def spread_pct(prices: list) -> Decimal:
     return (hi - lo) / lo * HUNDRED
 
 
+def split_outliers(usable: list, ratio: Decimal) -> tuple:
+    """(kept, ignored). The cheapest source is never ignored, so nothing gets cheaper by this."""
+    if not ratio or ratio <= 0 or len(usable) < 2:
+        return usable, []
+    kept, ignored = [], []
+    for r in usable:
+        others = min(o.price for o in usable if o is not r)
+        (ignored if r.price > others * ratio else kept).append(r)
+    return kept, ignored
+
+
 def decide(
     row: Row,
     results: list,
@@ -66,13 +81,20 @@ def decide(
 
     # --- manual override -------------------------------------------------
     if row.manual_price is not None:
-        return Decision(
+        d = Decision(
             sku=row.sku,
             action="publish",
             price=row.manual_price,
             refreshed=True,
             note="manual_price",
         )
+        market, _ = split_outliers([r for r in results if r.usable], cfg.outlier_ratio)
+        if market:
+            cheapest = min(market, key=lambda r: r.price)
+            d.cheapest_source = cheapest.source
+            if cheapest.price < row.manual_price:
+                d.flags.append(f"market_below_manual:{cheapest.source}")
+        return d
 
     d = Decision(sku=row.sku, action="hold")
 
@@ -83,7 +105,9 @@ def decide(
         elif r.status in INFO_STATUSES:
             d.info.append(f"{r.status}:{r.source}")
 
-    usable = [r for r in results if r.usable]
+    usable, ignored = split_outliers([r for r in results if r.usable], cfg.outlier_ratio)
+    for r in ignored:
+        d.flags.append(f"outlier_ignored:{r.source}")
     markup = row.markup_pct if row.markup_pct is not None else cfg.default_markup_pct
     candidate: Optional[Decimal] = None
 

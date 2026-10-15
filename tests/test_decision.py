@@ -88,6 +88,10 @@ def test_single_source_jump_is_held():
 # ---- manual price ----------------------------------------------------------
 def test_manual_price_overrides_everything():
     d = run([ok("moglix", 100), ok("homerun", 200)], r=row(manual_price=D(150), cost_floor=D(999)))
+    assert d.action == "publish" and d.price == D(150)
+    # still published as typed; the owner is only told that a marketplace is cheaper (STOP 2)
+    assert d.flags == ["market_below_manual:moglix"]
+    d = run([ok("moglix", 160), ok("homerun", 200)], r=row(manual_price=D(150), cost_floor=D(999)))
     assert d.action == "publish" and d.price == D(150) and d.flags == []
 
 
@@ -174,3 +178,60 @@ def test_quote_and_pending_rows_are_skipped():
     assert run([ok("moglix", 1)], r=row(mode="quote")).action == "skip"
     assert run([ok("moglix", 1)], r=row(publish="pending_review")).action == "skip"
     assert run([ok("moglix", 1)], r=row(publish="no")).action == "skip"
+
+
+# ---- outlier guard and manual-price alert (owner's STOP 2 decision, 15 Oct 2026) ---------------
+OUT = PricingCfg(outlier_ratio=D(2))
+
+
+def test_outlier_guard_is_off_by_default():
+    d = run([ok("industrybuying", 15339), ok("homerun", 3089), ok("moglix", 3100)])
+    assert d.action == "hold" and "spread_over_5pct" in d.flags
+    assert not any(f.startswith("outlier_ignored") for f in d.flags)
+
+
+def test_listing_over_twice_the_cheapest_other_is_ignored_and_flagged():
+    # real case: IB lists the same 90 m coil at 15,339 while HomeRun sells it at 3,089
+    d = run([ok("industrybuying", 15339), ok("homerun", 3089), ok("moglix", 3100)], cfg=OUT)
+    assert "outlier_ignored:industrybuying" in d.flags
+    assert d.action == "publish" and d.price == D(3089) and d.spread_pct < 5
+
+
+def test_the_5pct_rule_still_applies_to_the_remaining_sources():
+    d = run([ok("industrybuying", 15339), ok("homerun", 3089), ok("moglix", 4465)], cfg=OUT)
+    assert "outlier_ignored:industrybuying" in d.flags
+    assert d.action == "hold" and "spread_over_5pct" in d.flags and d.price is None
+
+
+def test_dropping_an_outlier_from_two_sources_leaves_a_single_source_hold():
+    d = run([ok("industrybuying", 15339), ok("homerun", 3089)], cfg=OUT)
+    assert d.flags == ["outlier_ignored:industrybuying", "single_source_no_baseline"]
+    assert d.action == "hold"
+
+
+def test_exactly_twice_is_not_an_outlier():
+    d = run([ok("industrybuying", 200), ok("homerun", 100)], cfg=OUT)
+    assert not any(f.startswith("outlier_ignored") for f in d.flags)
+    assert "spread_over_5pct" in d.flags and d.action == "hold"
+
+
+def test_the_cheapest_source_is_never_ignored():
+    # a suspiciously LOW price is not dropped by this guard; the 5% rule holds it instead
+    d = run([ok("industrybuying", 1000), ok("homerun", 3000), ok("moglix", 3050)], cfg=OUT)
+    assert "outlier_ignored:homerun" in d.flags and "outlier_ignored:moglix" in d.flags
+    assert "single_source_no_baseline" in d.flags and d.action == "hold"
+
+
+def test_manual_price_is_kept_and_flagged_when_a_marketplace_is_cheaper():
+    d = run([ok("industrybuying", 2900), ok("homerun", 3089)], r=row(manual_price=D(3000)), cfg=OUT)
+    assert d.action == "publish" and d.price == D(3000)
+    assert d.flags == ["market_below_manual:industrybuying"]
+
+
+def test_manual_price_alert_ignores_outlier_listings_and_quiet_when_cheaper():
+    d = run([ok("industrybuying", 900), ok("homerun", 3089), ok("moglix", 3100)],
+            r=row(manual_price=D(3000)), cfg=OUT)
+    # 900 is the cheapest, so it is never ignored: the owner is told about it
+    assert d.flags == ["market_below_manual:industrybuying"]
+    d = run([ok("homerun", 3089)], r=row(manual_price=D(3000)), cfg=OUT)
+    assert d.action == "publish" and d.price == D(3000) and d.flags == []

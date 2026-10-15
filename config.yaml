@@ -26,10 +26,15 @@ pricing:
   big_move_pct: 15                 # price move > this vs last published => flag "big_move"
   big_move_holds: false            # true => also hold the price when big_move fires
   single_source_max_move_pct: 5    # with one source, publish only if within this of last price
+  # Owner's STOP 2 decision (15 Oct 2026): a site priced more than 2x the cheapest OTHER site is a
+  # listing error (IndustryBuying lists some wires twice, one at 3-5x). It is ignored and flagged;
+  # the 5% rule then applies to the remaining sites. The cheapest site is never ignored.
+  outlier_ratio: 2
   default_markup_pct: 0
   default_gst_pct: 18
   stale_days: 3                    # no validated price for this many days => hide price
-  fetch_for_manual_rows: false     # false saves requests; manual_price rows are not fetched
+  fetch_for_manual_rows: true      # STOP 2: manual_price rows are fetched so you are told when a
+                                   # marketplace goes below your price (market_below_manual)
 
 fetch:
   min_delay_seconds: 3             # per host, across everything in the process

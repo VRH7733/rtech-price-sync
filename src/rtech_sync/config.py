@@ -22,6 +22,9 @@ class PricingCfg:
     big_move_pct: Decimal = Decimal("15")
     big_move_holds: bool = False
     single_source_max_move_pct: Decimal = Decimal("5")
+    # a source priced more than this many times the cheapest OTHER usable source is ignored as a
+    # listing error and flagged (owner's STOP 2 decision, 15 Oct 2026). 0 = off.
+    outlier_ratio: Decimal = Decimal("0")
     default_markup_pct: Decimal = Decimal("0")
     default_gst_pct: Decimal = Decimal("18")
     stale_days: int = 3
@@ -98,6 +101,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         big_move_pct=_dec(p, "big_move_pct", Decimal("15")),
         big_move_holds=bool(p.get("big_move_holds", False)),
         single_source_max_move_pct=_dec(p, "single_source_max_move_pct", Decimal("5")),
+        outlier_ratio=_dec(p, "outlier_ratio", Decimal("0")),
         default_markup_pct=_dec(p, "default_markup_pct", Decimal("0")),
         default_gst_pct=_dec(p, "default_gst_pct", Decimal("18")),
         stale_days=int(p.get("stale_days", 3)),
