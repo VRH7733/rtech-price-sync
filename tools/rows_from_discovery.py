@@ -87,6 +87,13 @@ def hint_of(brand: str, text: str, pack: str) -> str:
     return "; ".join(x for x in [line, *specs, colour] if x)
 
 
+def is_brand_product(title: str, brand: str) -> bool:
+    """Made by this brand: the title starts with it ("Havells ...") or says "by Havells".
+    "IMO PRECISION CONTROLS ..." is not a Precision product."""
+    t, b = normalise_text(title), re.escape(normalise_text(brand))
+    return re.match(rf"{b}(?![0-9a-z])", t) is not None or re.search(rf"\bby {b}(?![0-9a-z])", t) is not None
+
+
 def clean_title(cand) -> str:
     t = re.sub(r"\s+", " ", cand.get("title") or "").strip()
     v = (cand.get("variant") or "").strip()
@@ -104,7 +111,7 @@ def build(brand: str, disc: dict, existing: list) -> list:
     taken = set(used)
     for src in ("industrybuying", "homerun"):
         for cand in disc[src]:
-            if cand["url"] in taken or brand.lower() not in normalise_text(cand["_ident"]):
+            if cand["url"] in taken or not is_brand_product(cand.get("title") or "", brand):
                 continue
             if cand.get("fetched") != "yes":
                 continue

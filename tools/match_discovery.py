@@ -55,10 +55,16 @@ def load_discovery(directory):
     return out
 
 
+def has_brand(text_norm: str, brand: str) -> bool:
+    """The brand as a whole word ("gm" must not match inside "gms" or "sigma")."""
+    b = re.escape(normalise_text(brand))
+    return re.search(rf"(?<![0-9a-z]){b}(?![0-9a-z])", text_norm) is not None
+
+
 def passes(row, cand) -> bool:
     ident = cand["_ident"]
     norm = normalise_text(ident)
-    if row.brand.lower() not in norm:
+    if not has_brand(norm, row.brand):
         return False
     if "core" not in row.variant_hint and _MULTI_CORE.search(norm):
         return False  # a single-core house-wire row never takes a multi-core cable page

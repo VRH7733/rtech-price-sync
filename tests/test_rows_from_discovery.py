@@ -37,3 +37,13 @@ def test_build_matches_other_sites_only_when_unique_and_skips_known_products():
     existing = [Row(sku="RT-POLY-007", brand="Polycab", variant_hint=r.variant_hint, pack_size="90 m",
                     urls={"industrybuying": "x"})]
     assert build("Polycab", disc, existing) == []  # already in the catalogue
+
+
+def test_brand_must_be_the_maker_not_a_word_in_the_title():
+    from rows_from_discovery import is_brand_product
+    from match_discovery import has_brand
+    assert is_brand_product("Havells Lifeline FR Wire, 180m 6 Sqmm", "Havells")
+    assert is_brand_product("Standard by Havells Automatic Changeover", "Havells")
+    assert not is_brand_product("IMO PRECISION CONTROLS Microswitch", "Precision")
+    assert not is_brand_product("Finolex Silver FR Wire 90 Meters", "GM")
+    assert has_brand("gm 6a switch", "GM") and not has_brand("sigma 6a switch", "GM")
