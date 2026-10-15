@@ -1,10 +1,28 @@
-# STATUS (updated 15 Oct 2026, STOP 2)
+# STATUS (updated 15 Oct 2026, LIVE)
+
+## LIVE since 15 Oct 2026 (owner's approvals typed in the project thread)
+
+- Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every day at 05:00 IST, one site is
+  enough; no price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
+- Guards (all send the product to Request a Quote or hold, never to a guessed price):
+  outlier_ratio 2 (per product), low outlier, big move >40% held a day, `siblings.py`
+  sibling_ratio 2 (single-site wire vs same brand/sqmm/cores/length), needs_second_site
+  (IndustryBuying "-ELE." seller listings alone are not trusted: 33 of 33 that another site also
+  had were 2-9x dearer, median 4.6x).
+- Catalogue: 1,749 rows, 1,730 live products for Polycab, Havells, Legrand, Finolex, KEI, VIP,
+  RR Kabel, Hi-Fi, GM (rows built by `tools/rows_from_discovery.py`, products by
+  `create-drafts.yml` live=true). Precision and Sudhakar: nothing found.
+- Run 38747693016 (15 Oct, verified on the Store API): 654 priced with Add to cart, 1,043 Request
+  a Quote, 0 publish failures, 76 min, no blocks or 429s.
+- Open: IndustryBuying discovery reached 1,500 of 6,053 brand URLs; `discover.yml` with
+  previous=discovery/2026-10-15 continues it. Single-site prices from IndustryBuying "EL." listings
+  are still trusted and some look high (not verified).
 
 Read this first. It says what is real, what is a guess, and what to do next.
 "Verified" below means checked against the REAL sites, the REAL shop or an official doc, with the
 evidence named. Everything else is still a guess.
 
-## Built and tested (269 passed, 2 skipped on 15 Oct 2026 after STOP 2; 251 at STOP 2; 239 at STOP 1; 178 at the starter-kit build)
+## Built and tested (292 passed, 2 skipped at go-live; 269 after STOP 2; 251 at STOP 2; 239 at STOP 1; 178 at the starter-kit build)
 
 An independent adversarial review found 15 confirmed bugs (one critical: the parser could take the
 price of the wrong Product node in JSON-LD). All were fixed with regression tests in
