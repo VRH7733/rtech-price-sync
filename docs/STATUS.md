@@ -4,7 +4,7 @@ Read this first. It says what is real, what is a guess, and what to do next.
 "Verified" below means checked against the REAL sites, the REAL shop or an official doc, with the
 evidence named. Everything else is still a guess.
 
-## Built and tested (251 passed, 2 skipped on 15 Oct 2026 at STOP 2; 239 at STOP 1; 178 at the starter-kit build)
+## Built and tested (269 passed, 2 skipped on 15 Oct 2026 after STOP 2; 251 at STOP 2; 239 at STOP 1; 178 at the starter-kit build)
 
 An independent adversarial review found 15 confirmed bugs (one critical: the parser could take the
 price of the wrong Product node in JSON-LD). All were fixed with regression tests in
@@ -182,5 +182,13 @@ a "market range" column in a report, if wanted later. Not built.
 
 1. DONE: STOP 1 answered 15 Oct (pincode 560065, ~1,300 items, business contact address, keys
    read/write, new SKUs, code pushed with the schedule off).
-2. DONE: Phase 2 pilot. STOP 2: waiting for the owner's decisions (private docs/STOP2.md).
-3. Phase 3/4 as in SPEC, after deciding how the P6 Sprint plugin and the publisher fit together.
+2. DONE: Phase 2 pilot. STOP 2 answered 15 Oct: option B (outlier_ratio 2 + manual_price alert,
+   in code and config), all four wire lines, pipes wait for a second source, 8 no-source rows left
+   out. Re-run with the guard (run 38698128192): still 0 auto-publishable of 129, because after
+   ignoring IB's inflated listings 122 rows are single-source with no earlier price.
+3. STOP 3 prep: the owner fills `your_price_incl_gst` in the private
+   `catalogue/review/your_prices_2026-10-15.csv`; `tools/import_prices.py` copies it into
+   `manual_price`; `create-drafts.yml` (plan-only by default) creates DRAFT products for 3 SKUs;
+   then, with the owner's approval, publish those 3 and check them on the site. The nightly
+   schedule is still OFF; turning it on (dry run) needs the owner's explicit OK.
+4. Phase 3/4 as in SPEC, after deciding how the P6 Sprint plugin and the publisher fit together.
