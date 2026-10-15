@@ -14,6 +14,9 @@ def test_pack_and_category_from_real_titles():
     assert pack_of("Standard by Havells Combined Plate 8 M (V) IVY Series White") == ""
     assert pack_of("Havells Crabtree ACAPNCWV12 Athena 12M Modular Combined Plates") == ""
     assert pack_of("GM Cuba 16A 2+2 Extension Board with Extension Cord 5M") == "5 m"
+    plate = "Standard by Havells Combined Plate ZOE Series 2 M Silver Chrome Finish"
+    assert "2m" in hint_of("Havells", plate, pack_of(plate)).split("; ")  # 2 modules, not 8
+    assert "12m" in hint_of("Havells", "Havells Crabtree Athena 12M Modular Combined Plates", "").split("; ")
     assert pack_of("Polycab Coupler 32 mm Outer Diameter UPVC Material Black Color (Pack of 24)") == "pack of 24"
     assert category_of("Polycab Coupler 32 mm") == "Pipes & Fittings"
     assert category_of("Havells Euro II 63A Single Pole C Curve MCB") == "Switchgear"

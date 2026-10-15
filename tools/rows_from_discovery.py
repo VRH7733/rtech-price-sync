@@ -90,6 +90,8 @@ def hint_of(brand: str, text: str, pack: str) -> str:
     line = "; ".join(list(dict.fromkeys(words))[:4])  # e.g. "optima+", "deep; circular; tee"
     packnorm = normalise_text(pack).replace(" ", "")
     specs = [s for s in dict.fromkeys(SPEC.findall(norm)) if s != packnorm]
+    if not pack and not _LENGTHY.search(text):  # "Combined Plate 8 M": 8 modules, keep it in the hint
+        specs += [f"{n}m" for n in dict.fromkeys(re.findall(r"(?<![0-9.x])(\d+)m(?![0-9a-z])", norm))]
     colour = next((c for c in COLOURS if re.search(rf"\b{c}\b", norm)), "")
     return "; ".join(x for x in [line, *specs, colour] if x)
 
