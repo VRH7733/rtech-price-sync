@@ -21,6 +21,10 @@ on:
         description: "dry run only: also evaluate publish=pending_review rows (pilot)"
         type: boolean
         default: false
+      only_new:
+        description: "only products never priced yet (e.g. created after the morning run started)"
+        type: boolean
+        default: false
       brand:
         description: "limit to one brand (empty = all)"
         required: false
@@ -72,12 +76,14 @@ jobs:
           WC_SECRET: ${{ secrets.WC_SECRET }}
           INCLUDE_PENDING: ${{ github.event.inputs.include_pending }}
           BRAND: ${{ github.event.inputs.brand }}
+          ONLY_NEW: ${{ github.event.inputs.only_new }}
         run: |
           set +e
           ARGS="--catalogue pd/catalogue/rows --data pd/data"
           if [ "$MODE" = "publish" ]; then ARGS="$ARGS --publish"; fi
           if [ "$INCLUDE_PENDING" = "true" ]; then ARGS="$ARGS --include-pending"; fi
           if [ -n "$BRAND" ]; then ARGS="$ARGS --brand $BRAND"; fi
+          if [ "$ONLY_NEW" = "true" ]; then ARGS="$ARGS --only-new"; fi
           python -m rtech_sync.run $ARGS
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           exit 0

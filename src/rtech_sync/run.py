@@ -72,6 +72,7 @@ def run_sync(
     now: Callable = time.monotonic,
     sleep: Callable = time.sleep,
     include_pending: bool = False,
+    only_new: bool = False,
 ) -> RunResult:
     started = now()
     deadline = started + cfg.fetch.max_runtime_minutes * 60
@@ -81,6 +82,8 @@ def run_sync(
         raise ValueError("include_pending is for dry runs only")
     ok_publish = ("yes", "pending_review") if include_pending else ("yes",)
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
+    if only_new:  # products the bot has never priced (e.g. created after the morning run began)
+        eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
     if only_brands:
         wanted = {b.lower() for b in only_brands}
         eligible = [r for r in eligible if r.brand.lower() in wanted]
@@ -291,6 +294,7 @@ def main(argv=None) -> int:
     ap.add_argument("--publish", action="store_true", help="live run (default is dry-run)")
     ap.add_argument("--brand", action="append", help="limit to a brand (repeatable)")
     ap.add_argument("--limit", type=int, help="limit number of rows (testing)")
+    ap.add_argument("--only-new", action="store_true", help="only rows the bot has never priced")
     ap.add_argument("--today", help="override date YYYY-MM-DD (testing)")
     ap.add_argument("--include-pending", action="store_true",
                     help="dry run only: also evaluate publish=pending_review rows (pilot)")
@@ -325,7 +329,7 @@ def main(argv=None) -> int:
     fetcher = Fetcher(cfg.fetch)
     try:
         rr = run_sync(cfg, rows, state, fetcher, woo, today, args.publish, args.brand, args.limit,
-                      include_pending=args.include_pending)
+                      include_pending=args.include_pending, only_new=args.only_new)
     finally:
         # Save state FIRST: it records what is already live. Losing it would make tomorrow's run
         # compare against old prices and old dates.

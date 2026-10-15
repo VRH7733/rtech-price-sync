@@ -280,3 +280,11 @@ def test_dryrun_plan_shows_rule_decision_and_each_source_for_rows_without_wc_id(
     assert rec["rule_action"] == "publish" and rec["rule_price"] == "1000"
     assert rec["moglix_status"] == "ok" and rec["moglix_price"] == "1000"
     assert rec["industrybuying_price"] == "1020" and rec["homerun_status"] != "ok"
+
+
+def test_only_new_prices_just_the_products_never_seen_before(cfg):
+    state = {"version": 1, "items": {"OLD": {"first_seen": "2026-10-13", "price": "990"}}}
+    rows = [make_row(sku="OLD"), make_row(sku="NEW", wc_product_id=11, wc_variation_id=101)]
+    rr = go(cfg, rows, state, FakeFetcher(pages(1000, 1020, 1030)), FakeWoo(), publish=True, only_new=True)
+    assert [it["row"].sku for it in rr.items] == ["NEW"]
+    assert get_price_state(state, "OLD").price == D(990)
