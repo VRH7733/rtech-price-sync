@@ -1,10 +1,10 @@
-# STATUS (updated 15 Oct 2026, STOP 1)
+# STATUS (updated 15 Oct 2026, STOP 2)
 
 Read this first. It says what is real, what is a guess, and what to do next.
 "Verified" below means checked against the REAL sites, the REAL shop or an official doc, with the
 evidence named. Everything else is still a guess.
 
-## Built and tested (239 passed, 2 skipped on 15 Oct 2026; 178 at the starter-kit build)
+## Built and tested (251 passed, 2 skipped on 15 Oct 2026 at STOP 2; 239 at STOP 1; 178 at the starter-kit build)
 
 An independent adversarial review found 15 confirmed bugs (one critical: the parser could take the
 price of the wrong Product node in JSON-LD). All were fixed with regression tests in
@@ -117,33 +117,45 @@ a "market range" column in a report, if wanted later. Not built.
 
 ## Still NOT verified
 
-1. Behaviour at full volume (about 1,300 rows x 3 sources a night) and from GitHub runner IPs to
-   the three marketplaces (the bot check ran from the owner's home connection).
+1. Behaviour at full volume (about 1,300 rows a night). The Phase 2 pilot (137 rows, 248
+   requests) ran from GitHub runner IPs with no blocks; full volume is projected, not measured.
 2. Hostinger at publish volume from Azure IPs (see the 429 note above).
 3. Moglix has no `expected.json`-style ground truth beyond the 6 captured pages; real catalogue
    rows will hit page types not seen yet (e.g. pages without JSON-LD).
-4. `tools/match_urls.py` was tested on synthetic slugs only, not the real sitemaps.
+4. `tools/match_urls.py` was tested on synthetic slugs only. The pilot used `tools/discover.py` +
+   `tools/match_discovery.py` on the real sitemaps instead.
 5. The P6 Sprint plugin was read from a 9 Sep backup, not the live site.
 6. Shop-side changes (Phase 4) are not done: SOLD OUT removal, "Request price" display,
    "Indicative price incl. GST" text, variable-product shells, Services page.
-7. `daily-prices.yml` is still written for ONE repo: it reads `catalogue/` and commits `data/`
-   (prices, flags, history) into the code repo, opens the flags issue there, and reads
-   `vars.RTECH_CONTACT_EMAIL`, while the live setup is a PUBLIC code repo + PRIVATE data repo with
-   secrets `DATA_REPO_TOKEN` and `CONTACT_EMAIL`. As is, it would publish catalogue and price data
-   in public. Rewire it to the data repo in Phase 3; do not enable it before that.
+7. FIXED 15 Oct: `daily-prices.yml` now reads the catalogue from and commits `data/` to the PRIVATE
+   data repo, and opens the flags issue there (verified: pilot run 38694515650, data-repo issue #1).
+   The schedule stays off until STOP 3.
 8. `publish=yes` rows need `wc_product_id`/`wc_variation_id`; the 79 placeholders will not be used,
    so new products have to be created first (Phase 4 drafts).
 
 ## Capacity maths (assumptions: 3 s per request per site, the 3 sites run in parallel)
 
 - One request per product page per site. N products with all 3 URLs => about N x 3 s wall time.
-- Measured 15 Oct (29 requests): mean gap per host 3.9-4.6 s, not 3.0 s. At ~4.5 s, 1,300 products
-  ~ 100 min/night, 5,000 ~ 6.3 h (over the 6 h job cap: needs listing pages, two jobs, or fewer
-  sources per row). Measure again in the Phase 2 pilot.
+- Measured 15 Oct (29 requests from the owner's PC): mean gap per host 3.9-4.6 s.
+- Measured 15 Oct, Phase 2 pilot on GitHub (run 38694515650): 137 rows, 248 requests (Moglix 94,
+  IndustryBuying 110, HomeRun 44), fetch 6.4 min, job 7.0 min, about 3.5 s per request on the
+  busiest site. Projected with the same URL mix: 1,300 rows ~1 h, 5,000 rows ~3.9 h (inside the
+  300 min fetch cap and 6 h job cap, little spare).
 - The code repo is PUBLIC, so the nightly job's Actions minutes are free (official docs, above).
   Keep `cost_floor`, `manual_price` and markup columns in the PRIVATE data repo only.
 - Fewer requests are possible if a site's collection/listing pages return many prices at once
   (check robots first). Not implemented yet.
+
+## Phase 2 pilot result (prices are in the private data repo, docs/STOP2.md)
+
+- Under the agreed rule, 0 of 137 Polycab rows would publish: 86 single-source, 43 with a spread of
+  44% or more, 8 with no usable source. The rule worked as designed; it was not changed.
+- IndustryBuying lists some products twice: one listing near list price and one (ELE.FLA.* ids)
+  at about 3-5x, with the same title, 90 m, minimum order 1 (checked in a browser 15 Oct).
+- Moglix: 72 of 93 Polycab wire URLs were out of stock ("available on request").
+- Polycab conduit pipes were found on IndustryBuying only.
+- Owner decisions open at STOP 2: price-rule handling of these cases, which wire lines to sell,
+  pipes, rows with no source.
 
 ## Deviations from the original brief (deliberate)
 
@@ -168,7 +180,7 @@ a "market range" column in a report, if wanted later. Not built.
 
 ## Next steps
 
-1. STOP 1: the owner answers the open Phase 0 questions (docs/STOP1.md).
-2. Phase 2 pilot: Polycab, >= 100 rows across all three sources incl. pipes, dry run, measured
-   requests/runtime, then STOP 2.
+1. DONE: STOP 1 answered 15 Oct (pincode 560065, ~1,300 items, business contact address, keys
+   read/write, new SKUs, code pushed with the schedule off).
+2. DONE: Phase 2 pilot. STOP 2: waiting for the owner's decisions (private docs/STOP2.md).
 3. Phase 3/4 as in SPEC, after deciding how the P6 Sprint plugin and the publisher fit together.
