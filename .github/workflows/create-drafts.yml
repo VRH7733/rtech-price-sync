@@ -76,7 +76,7 @@ jobs:
           exit $rc
 
       - name: Save product ids to the private data repo
-        if: github.event.inputs.apply == 'true'
+        if: always() && github.event.inputs.apply == 'true'  # keep the ids even if one create failed
         env:
           SKUS: ${{ github.event.inputs.skus }}
         run: |
@@ -85,6 +85,6 @@ jobs:
           git config user.email "price-sync-bot@users.noreply.github.com"
           git add catalogue
           if git diff --cached --quiet; then echo "nothing to commit"; else
-            git commit -q -m "products created: $SKUS"
+            git commit -q -m "products created ($(echo $SKUS | wc -w) SKUs requested)"
             git pull -q --rebase && git push -q
           fi
