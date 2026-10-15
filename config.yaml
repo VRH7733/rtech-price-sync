@@ -35,6 +35,9 @@ pricing:
   # listing error (IndustryBuying lists some wires twice, one at 3-5x). It is ignored and flagged;
   # the 5% rule then applies to the remaining sites. The cheapest site is never ignored.
   outlier_ratio: 2
+  # Same 2x guard across a wire's colours/lines (15 Oct 2026 Polycab run: ~60 IndustryBuying-only
+  # wire prices were 2-5x the same size elsewhere). Such a price shows Request a Quote, flagged.
+  sibling_ratio: 2
   default_markup_pct: 0
   default_gst_pct: 18
   stale_days: 3                    # no validated price for this many days => hide price

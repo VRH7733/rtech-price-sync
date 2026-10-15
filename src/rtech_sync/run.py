@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 from . import report
 from .catalogue import CatalogueError, load_catalogue, validate
 from .config import Config, ConfigError, load_config
+from .siblings import apply_sibling_guard
 from .decision import decide
 from .fetcher import Fetcher
 from .models import SourceResult
@@ -117,6 +118,12 @@ def run_sync(
         rr.items.append({"row": r, "decision": d, "results": results, "live_price": ps.price, "ps": ps})
         if publish and ps.first_seen is None:
             set_item(state, r.sku, first_seen=today.isoformat())
+
+    if cfg.pricing.rule == "cheapest":
+        apply_sibling_guard(rr.items, cfg.pricing.sibling_ratio)
+
+    for it in rr.items:
+        r, d, ps = it["row"], it["decision"], it["ps"]
 
         # what the price rule decided, before "no WooCommerce id" blocks publishing (pilot table)
         rr.items[-1]["rule_action"], rr.items[-1]["rule_price"] = d.action, d.price

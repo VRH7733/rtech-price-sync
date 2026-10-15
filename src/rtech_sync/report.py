@@ -21,6 +21,7 @@ REASON_HELP = {
     "pack_mismatch": "A page sells a different pack size. Source excluded.",
     "tax_unknown": "Page does not say whether GST is included. Source excluded.",
     "parse_failed": "Could not read a price from the page. Source excluded.",
+    "sibling_outlier": "Only one site has this wire, and its price is more than twice (or under half) the same size in other colours/lines. Shown as Request a Quote.",
     "outlier_ignored": "One site costs more than twice the cheapest other site (likely a listing error). That site was ignored.",
     "market_below_manual": "A marketplace is now cheaper than your manual_price. Your price was kept; check it.",
 }
