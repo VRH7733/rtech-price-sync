@@ -575,8 +575,11 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                     if how == "name":
                         if not t["image_src"]:
                             row["action"], row["reason"] = "add-name", "no image now; matched by product name"
+                        elif t["web"] and current_quality.get(t["sku"]) and not current_quality[t["sku"]]["ok"]:
+                            row["action"] = "add-name"
+                            row["reason"] = f"current image fails: {current_quality[t['sku']]['reason']}; matched by product name"
                         else:
-                            row["reason"] = "has an image; product-name matches never replace"
+                            row["reason"] = "has an image; product-name matches never replace a good image"
                     elif not t["image_src"]:
                         row["action"], row["reason"] = "add", "no image now"
                     elif t["has_our_image"]:
@@ -687,7 +690,8 @@ def cmd_apply(a, woo, sleep=time.sleep):
         if not cur:
             r["result"] = "not on shop"
             continue
-        if r["action"] in ("add", "add-name") and cur.get("images"):
+        if (r["action"] == "add" or (r["action"] == "add-name" and not r["sku"].upper().startswith("WEB-"))) \
+                and cur.get("images"):
             r["result"] = "skipped: has an image now"
             continue
         p = apply_payload(r)

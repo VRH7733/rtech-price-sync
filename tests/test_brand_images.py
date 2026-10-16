@@ -232,4 +232,4 @@ def test_plan_name_route_is_separate_and_most_specific_wins():
              dict(_page("https://h/lifeline-plus", "Life Line Plus"), name="Life Line Plus S3 HRFR Cable")]
     rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
     assert rows["W1"]["action"] == "add-name" and rows["W1"]["page_url"] == "https://h/lifeline-plus"
-    assert rows["W2"]["action"] == "none" and "never replace" in rows["W2"]["reason"]
+    assert rows["W2"]["action"] == "none" and "never replace a good image" in rows["W2"]["reason"]
