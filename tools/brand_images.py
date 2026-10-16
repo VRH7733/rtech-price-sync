@@ -284,7 +284,9 @@ class Refused(Exception):
 def _check(fr, what):
     from rtech_sync.fetcher import looks_blocked
     is_image = fr.content[:3] == b"\xff\xd8\xff" or fr.content[:4] in (b"\x89PNG", b"RIFF")
-    if fr.status == "blocked" or (fr.status == "ok" and not is_image and looks_blocked(fr.text)):
+    # a challenge page is small; a full product page may just mention reCAPTCHA on a contact form
+    challenge = fr.status == "ok" and not is_image and len(fr.text or "") < 20000 and looks_blocked(fr.text)
+    if fr.status == "blocked" or challenge:
         raise Refused(f"{what}: {fr.status} {fr.http or ''} {fr.detail}".strip())
     if fr.status == "robots_blocked" and "unavailable" in fr.detail:
         raise Refused(f"{what}: robots.txt could not be read ({fr.detail})")
@@ -443,6 +445,9 @@ def cmd_crawl(a):
     summary["requests_per_host"] = fetcher.request_log
     Path(a.summary).write_text(json.dumps(summary, indent=1))
     log(json.dumps(summary, indent=1))
+    for site, v in summary["sites"].items():  # shows as a run annotation (readable without the log)
+        log(f"::notice title={key}::{site} listed {v['pages_listed']}, fetched {v['fetched']}, "
+            f"matched {v['matched']}, images {v['images_checked']}. {v['stopped']}")
     return 0
 
 
