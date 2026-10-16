@@ -141,3 +141,24 @@ def test_refusal_stops_the_brand():
         bi._check(_FR("robots_blocked", detail="robots.txt unavailable (429/5xx/network)"), "page")
     bi._check(_FR("robots_blocked", detail="disallowed by robots.txt: /x"), "page")  # just skipped
     bi._check(_FR("ok", 200, text="captcha", content=b"\xff\xd8\xff\xe0rest"), "image")  # image bytes
+
+
+def test_resolve_site_follows_a_redirected_robots_txt_and_stops_on_refusal():
+    import pytest
+    from types import SimpleNamespace as NS
+
+    class Resp:
+        def __init__(self, code, url, history=()):
+            self.status_code, self.url, self.history = code, url, list(history)
+
+    def fetcher(resp):
+        return NS(session=NS(get=lambda *a, **k: resp), _headers=lambda: {},
+                  cfg=NS(timeout_seconds=5, min_delay_seconds=0))
+
+    moved = Resp(200, "https://havells.com/robots.txt", [Resp(301, "https://www.havells.com/robots.txt")])
+    assert bi.resolve_site(fetcher(moved), "https://www.havells.com", print) == "https://havells.com"
+    with pytest.raises(bi.Refused):
+        bi.resolve_site(fetcher(Resp(403, "https://www.havells.com/robots.txt")), "https://www.havells.com", print)
+    away = Resp(200, "https://other.example/robots.txt", [Resp(301, "x")])
+    with pytest.raises(bi.Refused):
+        bi.resolve_site(fetcher(away), "https://www.havells.com", print)

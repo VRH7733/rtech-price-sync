@@ -290,7 +290,34 @@ def _check(fr, what):
         raise Refused(f"{what}: robots.txt could not be read ({fr.detail})")
 
 
+def resolve_site(fetcher, site, log):
+    """The brand's canonical address. The Fetcher does not follow a redirected robots.txt (it then
+    reads no rules and fetches nothing), so robots.txt itself is requested once here, following
+    redirects on the same site, to find where the site really lives (e.g. www. -> bare host)."""
+    from rtech_sync.urlcheck import same_site
+    try:
+        r = fetcher.session.get(site + "/robots.txt", headers=fetcher._headers(),
+                                timeout=fetcher.cfg.timeout_seconds, allow_redirects=True)
+    except Exception as e:
+        raise Refused(f"robots.txt: network error {type(e).__name__}")
+    hops = " -> ".join([str(h.status_code) for h in r.history] + [str(r.status_code)])
+    log(f"  robots.txt {site}: HTTP {hops}, final {r.url}")
+    if r.status_code in (401, 403, 429):
+        raise Refused(f"robots.txt: HTTP {r.status_code}")
+    parts = urlsplit(r.url)
+    final = f"{parts.scheme}://{parts.netloc}"
+    if not same_site(site, final) and r.history:
+        # e.g. polycab.com -> www.polycab.com is same_site; a move to another domain is followed
+        # only if it is clearly the same brand name
+        brand_word = re.sub(r"^www\.", "", urlsplit(site).netloc).split(".")[0]
+        if brand_word not in parts.netloc:
+            raise Refused(f"robots.txt redirects to another site: {r.url}")
+    time.sleep(fetcher.cfg.min_delay_seconds)
+    return final
+
+
 def sitemap_urls(fetcher, site, log, max_files=120):
+    site = resolve_site(fetcher, site, log)
     fr = fetcher.get(site + "/robots.txt")
     _check(fr, "robots.txt")
     roots = re.findall(r"(?im)^\s*sitemap\s*:\s*(\S+)", fr.text if fr.status == "ok" else "")
@@ -407,7 +434,7 @@ def cmd_crawl(a):
                 if fetched % 50 == 0:
                     log(f"  {fetched} pages fetched, {s['matched']} with our model numbers")
         except Refused as e:
-            s["stopped"] = f"REFUSED, stopped for this run: {e}"
+            s["stopped"] = f"STOPPED for this run: {e}"
             log(f"STOP {site}: {e}")
     with open(a.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, PAGE_FIELDS)
