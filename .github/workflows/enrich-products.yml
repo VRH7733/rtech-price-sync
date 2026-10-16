@@ -23,6 +23,10 @@ on:
         description: "really update the shop (false = plan only)"
         type: boolean
         default: false
+      replace_ours:
+        description: "redo content this tool wrote earlier, for the SKUs listed (fixes misclassified products)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # the illustrations are attached to a release of this public repo
@@ -106,9 +110,11 @@ jobs:
           WC_KEY: ${{ secrets.WC_KEY }}
           WC_SECRET: ${{ secrets.WC_SECRET }}
           APPLY: ${{ github.event.inputs.apply }}
+          REPLACE: ${{ github.event.inputs.replace_ours }}
         run: |
           EXTRA=""
           if [ "$APPLY" = "true" ]; then EXTRA="--apply"; fi
+          if [ "$REPLACE" = "true" ]; then EXTRA="$EXTRA --replace-ours"; fi
           python tools/enrich_products.py apply --catalogue-dir pd/catalogue/rows \
             --tile-base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE-{bucket}" \
             --media-map pd/data/media_map.json --report pd/data/enrich_report.md \

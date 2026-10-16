@@ -134,3 +134,21 @@ def test_illustrations_spread_over_16_releases():
     url = ep.tile_url("https://g/releases/download/product-illustrations-{bucket}", name)
     assert url == f"https://g/releases/download/product-illustrations-{name.rsplit('-', 1)[1][0]}/{name}"
     assert ep.tile_bucket(name) in "0123456789abcdef"
+
+
+def test_fan_regulators_and_fan_boxes_are_not_fans():
+    assert classify("Legrand Myrius NextGen Fan Regulator, 100 Watts, 2 Mod Classic White")[2] == "Switches & Sockets"
+    assert classify("VIP Metal Fan Box, 19mm (0.75\"), Powder Coated, Red")[2] == "Conduit Fittings"
+
+
+def test_replace_ours_redoes_only_our_own_content():
+    mine = [{"key": "_rte_content", "value": "1"}]
+    cur = _cur(description="<p>old</p>", short_description="<ul></ul>", attributes=[{"name": "x"}],
+               images=[{"id": 5}], categories=[{"id": 40, "name": "Fans", "slug": "fans"}], meta_data=mine)
+    p = ep.update_payload(cur, PLAN, IDS, "u", {}, replace_ours=True)
+    assert {"description", "short_description", "attributes", "images"} <= set(p)
+    assert p["categories"] == [{"id": 25}]
+    hand = dict(cur, meta_data=[], short_description="<p>mine</p>", brands=[{"id": 7}])
+    assert ep.update_payload(hand, PLAN, IDS, "u", {}, replace_ours=True) == {"id": 11}
+    kept = dict(cur, categories=[{"id": 24, "name": "Switches &amp; Sockets"}])
+    assert "categories" not in ep.update_payload(kept, PLAN, IDS, "u", {}, replace_ours=True)

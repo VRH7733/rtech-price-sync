@@ -77,8 +77,22 @@ def tile_url(base: str, name: str) -> str:
     return base.replace("{bucket}", tile_bucket(name)).rstrip("/") + "/" + name
 
 
-def update_payload(current: dict, plan: dict, ids: dict, tile_url: str, media_map: dict) -> dict:
-    """What to send for one product: only the parts that are empty on the shop."""
+# categories this tool created; only these may be corrected by --replace-ours
+OUR_CATEGORIES = {"Fans", "Lighting", "Water Pumps", "Water Heaters", "Home Appliances", "Lugs & Accessories",
+                  "Other Electricals"}
+
+
+def update_payload(current: dict, plan: dict, ids: dict, tile_url: str, media_map: dict,
+                   replace_ours: bool = False) -> dict:
+    """What to send for one product: only the parts that are empty on the shop.
+    replace_ours: also redo what THIS tool wrote earlier (product carries _rte_content), to fix a
+    wrong classification. Hand-made content on products without that mark is never replaced."""
+    ours = replace_ours and any(m.get("key") == "_rte_content" for m in current.get("meta_data", []))
+    if ours:
+        current = dict(current, description="", short_description="", attributes=[], images=[])
+        names = {html.unescape(c.get("name", "")) for c in current.get("categories") or []}
+        if names and names <= OUR_CATEGORIES and plan["category"] not in names:
+            current["categories"] = []
     p = {"id": current["id"]}
     if not _text(current.get("description")):
         p["description"] = plan["description"]
@@ -204,7 +218,8 @@ def run_apply(rows, a, woo, sleep=time.sleep, log=print):
             skipped["not ours"] += 1
             continue
         plan = plans[r.sku]
-        p = update_payload(cur, plan, ids, tile_url(a.tile_base_url, plan["tile_name"]), media_map)
+        p = update_payload(cur, plan, ids, tile_url(a.tile_base_url, plan["tile_name"]), media_map,
+                           replace_ours=getattr(a, "replace_ours", False))
         if len(p) == 1:
             skipped["already complete"] += 1
             continue
@@ -316,7 +331,11 @@ def main(argv=None):
     ap.add_argument("--report", default="enrich_report.md")
     ap.add_argument("--selection-out", help="write the selected SKUs here (render mode)")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--replace-ours", action="store_true",
+                    help="redo content this tool wrote before (needs --sku); fixes misclassified products")
     a = ap.parse_args(argv)
+    if a.replace_ours and not a.sku:
+        raise SystemExit("--replace-ours only with --sku")
     rows = select(load_catalogue(a.catalogue_dir), a.sku, a.sample, a.all)
     print(f"selected {len(rows)} products")
     if a.mode == "render":
