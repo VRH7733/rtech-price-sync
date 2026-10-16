@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from rtech_sync.catalogue import load_catalogue  # noqa: E402
-from rtech_sync.content import plan_row  # noqa: E402
+from rtech_sync.content import ILLUSTRATION_NOTE, plan_row  # noqa: E402
 
 CONTENT_VERSION = "1"
 FORBIDDEN = {"regular_price", "sale_price", "price", "stock_status", "stock_quantity", "manage_stock",
@@ -83,7 +83,7 @@ OUR_CATEGORIES = {"Fans", "Lighting", "Water Pumps", "Water Heaters", "Home Appl
 
 
 def update_payload(current: dict, plan: dict, ids: dict, tile_url: str, media_map: dict,
-                   replace_ours: bool = False) -> dict:
+                   replace_ours: bool = False, illustrations: bool = False) -> dict:
     """What to send for one product: only the parts that are empty on the shop.
     replace_ours: also redo what THIS tool wrote earlier (product carries _rte_content), to fix a
     wrong classification. Hand-made content on products without that mark is never replaced."""
@@ -115,7 +115,8 @@ def update_payload(current: dict, plan: dict, ids: dict, tile_url: str, media_ma
             attrs.append(a)
         if attrs:
             p["attributes"] = attrs
-    if not current.get("images"):
+    # Harshi, 16 Oct 2026: the drawings looked poor, so products get no picture until real ones exist
+    if illustrations and not current.get("images"):
         name = plan["tile_name"]
         alt = f"{html.unescape(current.get('name') or '')} (illustration)"
         if name in media_map:
@@ -219,7 +220,8 @@ def run_apply(rows, a, woo, sleep=time.sleep, log=print):
             continue
         plan = plans[r.sku]
         p = update_payload(cur, plan, ids, tile_url(a.tile_base_url, plan["tile_name"]), media_map,
-                           replace_ours=getattr(a, "replace_ours", False))
+                           replace_ours=getattr(a, "replace_ours", False),
+                           illustrations=getattr(a, "illustrations", False))
         if len(p) == 1:
             skipped["already complete"] += 1
             continue
@@ -272,6 +274,67 @@ def run_apply(rows, a, woo, sleep=time.sleep, log=print):
     return result, payloads, media_map
 
 
+def removal_payload(current: dict, our_image_ids: set):
+    """Take OUR drawing off a product (only if every image on it is one of ours) and drop the
+    'picture is an illustration' line from its description. Anything else is left alone."""
+    if not any(m.get("key") == "_rte_content" for m in current.get("meta_data", [])):
+        return None
+    imgs = current.get("images") or []
+    p = {"id": current["id"]}
+    if imgs and all(i.get("id") in our_image_ids for i in imgs):
+        p["images"] = []
+    desc = current.get("description") or ""
+    if ILLUSTRATION_NOTE in desc:
+        p["description"] = desc.replace(ILLUSTRATION_NOTE, "").rstrip()
+    return p if len(p) > 1 else None
+
+
+def run_remove(rows, a, woo, sleep=time.sleep, log=print):
+    media_map = json.loads(Path(a.media_map).read_text()) if Path(a.media_map).exists() else {}
+    ours = set(media_map.values())
+    result = {"updated": [], "failed": {}, "stats": collections.Counter(), "skipped": collections.Counter(),
+              "created": {}}
+    pid = [r.wc_product_id for r in rows]
+    by_id = {r.wc_product_id: r for r in rows}
+    payloads = []
+    for i in range(0, len(pid), 100):
+        st, data, _ = woo.get("/products", {"include": ",".join(map(str, pid[i:i + 100])), "per_page": 100})
+        if st != 200:
+            raise RuntimeError(f"GET products failed: HTTP {st}")
+        for cur in data:
+            p = removal_payload(cur, ours)
+            if p is None:
+                result["skipped"]["nothing of ours"] += 1
+                continue
+            for k in p:
+                if k != "id":
+                    result["stats"][k] += 1
+            payloads.append((by_id[cur["id"]], None, p))
+        sleep(PAUSE / 2)
+    log(f"products to change: {len(payloads)}; fields: {dict(result['stats'])}; skipped: {dict(result['skipped'])}")
+    if not a.apply:
+        return result, payloads
+    failed_in_a_row = 0
+    for i in range(0, len(payloads), 20):
+        chunk = payloads[i:i + 20]
+        st, data = woo.post("/products/batch", {"update": [p for _, _, p in chunk]})
+        answers = {x.get("id"): x for x in (data or {}).get("update", [])} if st == 200 else {}
+        ok_any = False
+        for r, _, p in chunk:
+            ans = answers.get(p["id"])
+            if not ans or "error" in ans:
+                result["failed"][r.sku] = (ans or {}).get("error", {}).get("message", f"HTTP {st}")[:200]
+            else:
+                ok_any = True
+                result["updated"].append((r.sku, ans.get("permalink", "")))
+        failed_in_a_row = 0 if ok_any else failed_in_a_row + 1
+        if failed_in_a_row >= STOP_AFTER_FAILED_BATCHES:
+            result["fatal"] = f"stopped after {failed_in_a_row} failed batches in a row (HTTP {st})"
+            break
+        sleep(PAUSE)
+    return result, payloads
+
+
 def verify(woo, rows):
     """Re-read the products and count what a customer now sees."""
     c = collections.Counter()
@@ -312,6 +375,9 @@ def write_report(path, a, result, payloads, checked):
     else:
         lines += ["", "## Plan (first 40)", "", "| sku | category | image | specs |", "|---|---|---|---|"]
         for r, plan, p in payloads[:40]:
+            if plan is None:  # removal run
+                lines.append(f"| {r.sku} | (keep) | {'remove drawing' if 'images' in p else '(keep)'} | |")
+                continue
             spec = "; ".join(f"{k} {v}" for k, v in plan["specs"].items() if k != "Brand")
             lines.append(f"| {r.sku} | {plan['category'] if 'categories' in p else '(keep)'} | "
                          f"{plan['tile_name'] if 'images' in p else '(keep)'} | {spec} |")
@@ -331,6 +397,9 @@ def main(argv=None):
     ap.add_argument("--report", default="enrich_report.md")
     ap.add_argument("--selection-out", help="write the selected SKUs here (render mode)")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--remove-illustrations", action="store_true",
+                    help="take our drawings off the selected products (keeps text, specs, categories)")
+    ap.add_argument("--illustrations", action="store_true", help="also add our drawings (off since 16 Oct)")
     ap.add_argument("--replace-ours", action="store_true",
                     help="redo content this tool wrote before (needs --sku); fixes misclassified products")
     a = ap.parse_args(argv)
@@ -354,7 +423,10 @@ def main(argv=None):
         print(f"illustrations rendered: {made}")
         return 0
     woo = Woo(os.environ["WC_URL"], os.environ["WC_KEY"], os.environ["WC_SECRET"])
-    result, payloads, _ = run_apply(rows, a, woo)
+    if a.remove_illustrations:
+        result, payloads = run_remove(rows, a, woo)
+    else:
+        result, payloads, _ = run_apply(rows, a, woo)
     checked = verify(woo, rows) if a.apply else None
     write_report(a.report, a, result, payloads, checked)
     print(f"updated {len(result['updated'])}, failed {len(result['failed'])}")

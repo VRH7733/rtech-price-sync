@@ -57,7 +57,7 @@ def _cur(**kw):
 
 
 def test_fills_only_empty_fields_and_never_price_or_stock():
-    p = ep.update_payload(_cur(), PLAN, IDS, "https://x/t.webp", {})
+    p = ep.update_payload(_cur(), PLAN, IDS, "https://x/t.webp", {}, illustrations=True)
     assert set(p) == {"id", "description", "short_description", "categories", "brands", "attributes",
                       "images", "meta_data"}
     assert p["categories"] == [{"id": 25}] and p["brands"] == [7]
@@ -75,7 +75,7 @@ def test_hand_edits_are_kept():
 
 
 def test_known_illustration_is_reused_not_uploaded_again():
-    p = ep.update_payload(_cur(), PLAN, IDS, "u", {PLAN["tile_name"]: 99})
+    p = ep.update_payload(_cur(), PLAN, IDS, "u", {PLAN["tile_name"]: 99}, illustrations=True)
     assert p["images"][0]["id"] == 99 and "src" not in p["images"][0]
 
 
@@ -116,7 +116,7 @@ def test_plan_only_writes_nothing(tmp_path):
 def test_apply_uploads_each_illustration_once_and_skips_foreign_products(tmp_path):
     ours = [{"key": "_rte_source", "value": "rtech-price-sync"}]
     woo = FakeWoo([_cur(id=1, meta_data=ours), _cur(id=2, meta_data=ours), _cur(id=3, meta_data=[])])
-    a = SimpleNamespace(apply=True, media_map=str(tmp_path / "m.json"), tile_base_url="https://x")
+    a = SimpleNamespace(apply=True, media_map=str(tmp_path / "m.json"), tile_base_url="https://x", illustrations=True)
     result, _, media = ep.run_apply([_row("A", 1), _row("B", 2), _row("C", 3)], a, woo,
                                     sleep=lambda s: None, log=lambda m: None)
     batches = [p for path, p in woo.posts if path == "/products/batch"]
@@ -145,10 +145,24 @@ def test_replace_ours_redoes_only_our_own_content():
     mine = [{"key": "_rte_content", "value": "1"}]
     cur = _cur(description="<p>old</p>", short_description="<ul></ul>", attributes=[{"name": "x"}],
                images=[{"id": 5}], categories=[{"id": 40, "name": "Fans", "slug": "fans"}], meta_data=mine)
-    p = ep.update_payload(cur, PLAN, IDS, "u", {}, replace_ours=True)
+    p = ep.update_payload(cur, PLAN, IDS, "u", {}, replace_ours=True, illustrations=True)
     assert {"description", "short_description", "attributes", "images"} <= set(p)
     assert p["categories"] == [{"id": 25}]
     hand = dict(cur, meta_data=[], short_description="<p>mine</p>", brands=[{"id": 7}])
     assert ep.update_payload(hand, PLAN, IDS, "u", {}, replace_ours=True) == {"id": 11}
     kept = dict(cur, categories=[{"id": 24, "name": "Switches &amp; Sockets"}])
     assert "categories" not in ep.update_payload(kept, PLAN, IDS, "u", {}, replace_ours=True)
+
+
+def test_no_drawings_by_default():
+    assert "images" not in ep.update_payload(_cur(), PLAN, IDS, "u", {})
+
+
+def test_removal_takes_off_only_our_drawing_and_note():
+    from rtech_sync.content import ILLUSTRATION_NOTE
+    mine = [{"key": "_rte_content", "value": "1"}]
+    cur = _cur(images=[{"id": 501}], description="<p>x</p>" + ILLUSTRATION_NOTE, meta_data=mine)
+    assert ep.removal_payload(cur, {501}) == {"id": 11, "images": [], "description": "<p>x</p>"}
+    real_photo = dict(cur, images=[{"id": 7}], description="<p>x</p>")
+    assert ep.removal_payload(real_photo, {501}) is None
+    assert ep.removal_payload(dict(cur, meta_data=[]), {501}) is None

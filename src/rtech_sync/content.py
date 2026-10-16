@@ -138,8 +138,11 @@ def long_description(title: str, label: str, s: dict) -> str:
             "<h2>Buying from RTech Electricals</h2>"
             "<ul><li>Prices shown include GST.</li>"
             "<li>For bulk quantities, a different length or delivery to site, use Request a Quote and we reply with our best price.</li>"
-            "<li>Please check the brand, model and specification against your requirement before ordering.</li></ul>"
-            "<p><small>The picture is an illustration of the product type, not a photo of this exact item.</small></p>")
+            "<li>Please check the brand, model and specification against your requirement before ordering.</li></ul>")
+
+
+# written into descriptions while products carried our drawings (16 Oct 2026); removed with them
+ILLUSTRATION_NOTE = "<p><small>The picture is an illustration of the product type, not a photo of this exact item.</small></p>"
 
 
 def short_description(s: dict) -> str:

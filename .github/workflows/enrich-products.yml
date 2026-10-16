@@ -23,6 +23,14 @@ on:
         description: "really update the shop (false = plan only)"
         type: boolean
         default: false
+      remove_illustrations:
+        description: "take our drawings off the selected products (text, specs, categories stay)"
+        type: boolean
+        default: false
+      illustrations:
+        description: "also add our drawings (off since 16 Oct 2026, owner found them poor)"
+        type: boolean
+        default: false
       replace_ours:
         description: "redo content this tool wrote earlier, for the SKUs listed (fixes misclassified products)"
         type: boolean
@@ -86,10 +94,11 @@ jobs:
           echo "args=$ARGS" >> "$GITHUB_OUTPUT"
 
       - name: Draw illustrations
+        if: github.event.inputs.illustrations == 'true'
         run: python tools/enrich_products.py render --catalogue-dir pd/catalogue/rows --tiles-dir tiles ${{ steps.sel.outputs.args }}
 
       - name: Publish illustrations on releases (only new ones)
-        if: github.event.inputs.apply == 'true'
+        if: github.event.inputs.apply == 'true' && github.event.inputs.illustrations == 'true'
         # GitHub allows 1,000 files per release, so they are spread over 16 releases by name hash
         run: |
           for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f; do
@@ -111,8 +120,12 @@ jobs:
           WC_SECRET: ${{ secrets.WC_SECRET }}
           APPLY: ${{ github.event.inputs.apply }}
           REPLACE: ${{ github.event.inputs.replace_ours }}
+          REMOVE: ${{ github.event.inputs.remove_illustrations }}
+          DRAW: ${{ github.event.inputs.illustrations }}
         run: |
           EXTRA=""
+          if [ "$REMOVE" = "true" ]; then EXTRA="$EXTRA --remove-illustrations"; fi
+          if [ "$DRAW" = "true" ]; then EXTRA="$EXTRA --illustrations"; fi
           if [ "$APPLY" = "true" ]; then EXTRA="--apply"; fi
           if [ "$REPLACE" = "true" ]; then EXTRA="$EXTRA --replace-ours"; fi
           python tools/enrich_products.py apply --catalogue-dir pd/catalogue/rows \
