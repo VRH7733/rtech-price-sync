@@ -1,0 +1,47 @@
+name: shop-check
+
+# Manual, read-only: compares what customers see on the shop (public Store API and a sample
+# of product pages through the cache) with the last price run's record. The public log shows
+# counts only; the report with SKUs and prices goes to the PRIVATE data repo.
+on:
+  workflow_dispatch:
+    inputs:
+      sample_pages:
+        description: "How many random product pages to open"
+        default: "40"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+
+      - name: Check the shop
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+          SAMPLE: ${{ github.event.inputs.sample_pages }}
+        run: python3 tools/check_shop.py pd/data/latest.json pd/data/shop_check.md "${SAMPLE:-40}"
+
+      - name: Save the report to the private data repo
+        if: always()
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add data/shop_check.md 2>/dev/null || exit 0
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -m "shop check $(TZ=Asia/Kolkata date +%F)"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
