@@ -137,6 +137,9 @@ def main(argv=None) -> int:
     t0 = time.monotonic()
     urls, n_sitemaps = collect(fetcher, a.source, brands, keywords, print)
     print(f"{a.source}: {len(urls)} candidate URLs from {n_sitemaps} sitemaps")
+    if not urls:  # a blocked or empty sitemap must not overwrite earlier results with nothing
+        print(f"{a.source}: no candidate URLs; nothing written")
+        return 1
     prev = load_previous(a.previous)
     rows, fetched = plan_rows(urls, prev, a.fetch, a.max_pages, lambda u: fetch_rows(fetcher, a.source, u))
     for r in rows:

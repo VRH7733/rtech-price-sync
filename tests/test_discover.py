@@ -69,3 +69,11 @@ def test_previous_run_pages_are_reused_and_only_new_pages_count(tmp_path):
                                         "https://x/c?variant=2", "https://x/d"]
     assert rows[0]["price"] == "10" and rows[-1]["fetched"] == "no"
     assert load_previous("") == {} and load_previous(tmp_path / "missing.csv") == {}
+
+
+def test_blocked_sitemap_writes_nothing_so_earlier_results_survive(tmp_path, monkeypatch):
+    monkeypatch.setenv("RTECH_CONTACT_EMAIL", "shop@example.com")
+    monkeypatch.setattr(discover, "Fetcher", lambda cfg: Fake({}))  # every sitemap fails (e.g. 403)
+    out = tmp_path / "out"
+    rc = discover.main(["--source", "industrybuying", "--brand", "havells", "--out", str(out)])
+    assert rc == 1 and not (out / "industrybuying.csv").exists()
