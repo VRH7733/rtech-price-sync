@@ -1,0 +1,121 @@
+name: enrich-products
+
+# Manual only. Fills the EMPTY parts of our product pages from our own catalogue: specs, description,
+# category (only if Uncategorized), brand, and our own illustration (only if no image). Never sends
+# price, stock, type or button fields, and never touches products the price sync did not create.
+# apply=false (the default) only writes a plan to data/enrich_report.md in the private data repo.
+on:
+  workflow_dispatch:
+    inputs:
+      skus:
+        description: "SKUs separated by spaces (leave empty to use sample/all)"
+        required: false
+        default: ""
+      sample:
+        description: "number of products spread across product types (ignored if skus or all)"
+        required: false
+        default: "20"
+      all:
+        description: "every live product"
+        type: boolean
+        default: false
+      apply:
+        description: "really update the shop (false = plan only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # the illustrations are attached to a release of this public repo
+  actions: read
+
+concurrency:
+  group: shop-writes
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE: product-illustrations
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Do not overlap the price run (both write to the shop)
+        run: |
+          for wf in daily-prices.yml discover.yml create-drafts.yml; do
+            n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --json status \
+                -q '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+            if [ "$n" != "0" ]; then echo "::error::$wf is running; try again later"; exit 1; fi
+          done
+
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: |
+          sudo apt-get install -y -q fonts-inter >/dev/null
+          pip install -r requirements.txt pillow
+
+      - run: python -m pytest -q
+
+      - name: Selection
+        id: sel
+        env:
+          SKUS: ${{ github.event.inputs.skus }}
+          SAMPLE: ${{ github.event.inputs.sample }}
+          ALL: ${{ github.event.inputs.all }}
+        run: |
+          ARGS=""
+          if [ -n "$SKUS" ]; then for s in $SKUS; do ARGS="$ARGS --sku $s"; done
+          elif [ "$ALL" = "true" ]; then ARGS="--all"
+          else ARGS="--sample ${SAMPLE:-20}"; fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
+      - name: Draw illustrations
+        run: python tools/enrich_products.py render --catalogue-dir pd/catalogue/rows --tiles-dir tiles ${{ steps.sel.outputs.args }}
+
+      - name: Publish illustrations on the release (only new ones)
+        if: github.event.inputs.apply == 'true'
+        run: |
+          gh release view "$RELEASE" >/dev/null 2>&1 || gh release create "$RELEASE" --title "Product illustrations" \
+            --notes "Our own product-type illustrations for rtechelectricals.com product pages (tools/enrich_products.py). Not product photos."
+          gh release view "$RELEASE" --json assets -q '.assets[].name' | sort > have.txt
+          ls tiles | sort > want.txt
+          comm -13 have.txt want.txt > new.txt
+          echo "new illustrations: $(wc -l < new.txt)"
+          cd tiles && xargs -a ../new.txt -n 50 gh release upload "$RELEASE"
+
+      - name: Update products
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+          APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          EXTRA=""
+          if [ "$APPLY" = "true" ]; then EXTRA="--apply"; fi
+          python tools/enrich_products.py apply --catalogue-dir pd/catalogue/rows \
+            --tile-base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE" \
+            --media-map pd/data/media_map.json --report pd/data/enrich_report.md \
+            ${{ steps.sel.outputs.args }} $EXTRA
+
+      - name: Save report and image map to the private data repo
+        if: always()
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add data/enrich_report.md data/media_map.json 2>/dev/null || true
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -m "product content $(date -u +%F) apply=${{ github.event.inputs.apply }}"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
