@@ -2,9 +2,10 @@
 
 ## LIVE since 15 Oct 2026 (owner's approvals typed in the project thread)
 
-- Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every morning (starts 02:00 IST, backup
-  04:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
-  enough; no price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
+- Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every morning (starts 01:00 IST, backup
+  03:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
+  enough; LiteSpeed purges /product/ etc. at 07:30 IST (Harshi, 16 Oct); `shop-check.yml`
+  (read-only) compares the live shop with data/latest.json. No price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
 - Guards (all send the product to Request a Quote or hold, never to a guessed price):
   outlier_ratio 2 (per product), low outlier, big move >40% held a day, `siblings.py`
   sibling_ratio 2 (single-site wire vs same brand/sqmm/cores/length), needs_second_site

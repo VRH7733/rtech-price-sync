@@ -6,14 +6,14 @@ name: daily-prices
 #
 # Daily run, owner's go-live approval (15 Oct 2026, in the project thread): every morning it
 # PUBLISHES the cheapest price of the three sites for catalogue rows with publish=yes and a shop
-# product id. ~5,000 products take ~3-4 h, so it starts at 02:00 IST and is done before the shop's
-# 06:00 IST cache purge. GitHub may start scheduled runs late or drop them (the 15 Oct 23:30 UTC
-# run never fired), so a backup schedule at 04:00 IST runs only if no publish run happened yet
+# product id. ~5,000 products take ~4.5 h (16 Oct: 255 min), so it starts at 01:00 IST and is done
+# before the shop's 07:30 IST cache purge. GitHub may start scheduled runs late or drop them (the 15 Oct 23:30 UTC
+# run never fired), so a backup schedule at 03:00 IST runs only if no publish run happened yet
 # that IST day. A manual run is a dry run unless mode=publish is given.
 on:
   schedule:
-    - cron: "30 20 * * *"   # 02:00 IST
-    - cron: "30 22 * * *"   # 04:00 IST backup, skipped if today's run already published
+    - cron: "30 19 * * *"   # 01:00 IST
+    - cron: "30 21 * * *"   # 03:00 IST backup, skipped if today's run already published
   workflow_dispatch:
     inputs:
       mode:
