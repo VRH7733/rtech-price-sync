@@ -49,6 +49,10 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # also one shop writer at a time (create-drafts, enrich-products) so saves never overwrite
+    concurrency:
+      group: shop-writes
+      cancel-in-progress: false
     # GitHub-hosted jobs are capped at 6 h (docs.github.com/en/actions/reference/limits).
     timeout-minutes: 355
     env:
