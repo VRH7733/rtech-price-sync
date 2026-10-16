@@ -329,6 +329,35 @@ def _check(fr, what):
         raise Refused(f"{what}: robots.txt could not be read ({fr.detail})")
 
 
+def sitemap_images(xml_bytes: bytes) -> dict:
+    """Image sitemap entries (<image:image>): page URL -> (image URLs, image title)."""
+    import gzip
+    from xml.etree import ElementTree
+    if xml_bytes[:2] == b"\x1f\x8b":
+        xml_bytes = gzip.decompress(xml_bytes)
+    out = {}
+    for url in ElementTree.fromstring(xml_bytes).iter():
+        if not url.tag.endswith("}url") and url.tag != "url":
+            continue
+        loc, imgs, title = "", [], ""
+        for el in url.iter():
+            tag = el.tag.split("}")[-1]
+            if tag == "loc" and el.text and not loc and "image" not in el.tag:
+                loc = el.text.strip()
+            elif tag == "loc" and el.text and "image" in el.tag:
+                imgs.append(el.text.strip())
+            elif tag == "title" and el.text and "image" in el.tag:
+                title = title or el.text.strip()
+        if loc and imgs:
+            out[loc] = (imgs, title)
+    return out
+
+
+def original_image(url: str) -> str:
+    """Magento serves resized copies under /cache/<hash>/; the same file without it is the original."""
+    return re.sub(r"/cache/[0-9a-f]{32}/", "/", url)
+
+
 def resolve_site(fetcher, site, log):
     """The brand's canonical address. The Fetcher does not follow a redirected robots.txt (it then
     reads no rules and fetches nothing), so robots.txt itself is requested once here, following
@@ -363,7 +392,7 @@ def sitemap_urls(fetcher, site, log, max_files=120):
     roots = roots or [site + "/sitemap.xml", site + "/sitemap_index.xml"]
     from rtech_sync.matching import parse_sitemap
     from rtech_sync.urlcheck import same_site
-    queue, seen, pages = list(roots), set(), []
+    queue, seen, pages, images = list(roots), set(), [], {}
     while queue and len(seen) < max_files:
         sm = queue.pop(0)
         if sm in seen or (len(seen) >= len(roots) and SKIP_SITEMAP.search(urlsplit(sm).path)):
@@ -380,10 +409,14 @@ def sitemap_urls(fetcher, site, log, max_files=120):
             log(f"  sitemap {sm}: cannot parse ({type(e).__name__})")
             continue
         got = [u for u in got if same_site(site, u)]
+        try:
+            images.update(sitemap_images(fr.content or fr.text.encode()))
+        except Exception:
+            pass
         log(f"  sitemap {sm}: {len(got)} pages, {len(children)} child sitemaps")
         pages += got
         queue += children
-    return list(dict.fromkeys(pages)), len(seen)
+    return list(dict.fromkeys(pages)), len(seen), images
 
 
 def _vocab(targets) -> collections.Counter:
@@ -477,15 +510,40 @@ def cmd_crawl(a):
         s = summary["sites"][site] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
                                       "images_checked": 0, "stopped": ""}
         try:
-            urls, n = sitemap_urls(fetcher, site, log)
+            urls, n, simg = sitemap_urls(fetcher, site, log)
             s["sitemap_files"], s["pages_listed"] = n, len(urls)
             if not urls:
                 s["stopped"] = "no published sitemap with pages"
                 continue
-            for u in prioritise(urls, targets, all_codes, set(cache)):
+            done = {u for u, r in cache.items() if any(i.get("ok") for i in json.loads(r.get("images") or "[]"))
+                    or not page_codes(u, all_codes) or u not in simg}
+            for u in prioritise(urls, targets, all_codes, done):
                 if fetched >= a.max_pages:
                     s["stopped"] = s["stopped"] or "page limit for this run"
                     break
+                codes_here = page_codes(u, all_codes)
+                sm_imgs = [i for i in simg.get(u, ([], ""))[0] if any(c in _norm(i) for c in codes_here)]
+                if codes_here and sm_imgs:
+                    # the sitemap already names this page's product photo: fetch only the photo
+                    checked = []
+                    for img in dict.fromkeys([original_image(sm_imgs[0]), sm_imgs[0]]):
+                        ir = fetcher.get(img)
+                        fetched += 1
+                        _check(ir, img)
+                        s["images_checked"] += 1
+                        q = assess(ir.content) if ir.status == "ok" else {
+                            "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False}
+                        checked.append(dict(q, url=img))
+                        if q["ok"]:
+                            break
+                    s["matched"] += 1
+                    title = simg[u][1]
+                    out_rows[u] = {"url": u, "status": "sitemap", "fetched": time.strftime("%Y-%m-%d"),
+                                   "strong": urlsplit(u).path.replace("-", " ").replace("/", " ") + " | " + title,
+                                   "images": json.dumps(checked), "name": title}
+                    if fetched % 50 == 0:
+                        _save_pages(a.out, out_rows)
+                    continue
                 fr = fetcher.get(u)
                 fetched += 1
                 s["fetched"] += 1

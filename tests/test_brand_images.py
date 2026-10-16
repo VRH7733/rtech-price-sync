@@ -269,3 +269,16 @@ def test_legrand_catalogue_photo_by_number(tmp_path, monkeypatch):
     rows = {r["sku"]: r for r in bi.plan(bi.load_targets(targets), {"legrand": list(_csv.DictReader(open(out)))})}
     assert rows["L1"]["action"] == "add" and rows["L1"]["image_url"].endswith("LG-679250-WEB-R.jpg")
     assert rows["L2"]["action"] == "none"
+
+
+def test_image_sitemap_gives_the_photo_without_opening_the_page():
+    xml = (b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+           b'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"><url>'
+           b'<loc>https://havells.com/fancy-jumbo-batten-holder-metal-ring-ahlhgxw060.html</loc>'
+           b'<image:image><image:loc>https://havells.com/media/catalog/product/cache/206c61f8e794cc73ece691a73796356e/'
+           b'import/Switches/AHLHGXW060.jpg</image:loc><image:title>Fancy Jumbo Batten Holder</image:title></image:image>'
+           b'</url></urlset>')
+    got = bi.sitemap_images(xml)
+    imgs, title = got["https://havells.com/fancy-jumbo-batten-holder-metal-ring-ahlhgxw060.html"]
+    assert title == "Fancy Jumbo Batten Holder"
+    assert bi.original_image(imgs[0]) == "https://havells.com/media/catalog/product/import/Switches/AHLHGXW060.jpg"
