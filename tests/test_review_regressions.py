@@ -25,6 +25,9 @@ from rtech_sync.urlcheck import is_search_url
 ROOT = Path(__file__).resolve().parent.parent
 TODAY = date(2026, 10, 14)
 CFG = load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
+# day-by-day profile (check every product daily, hide after 3 missed days); see test_run_e2e
+CFG = dataclasses.replace(CFG, fetch=dataclasses.replace(CFG.fetch, check_every_days=1),
+                          pricing=dataclasses.replace(CFG.pricing, stale_days=3))
 # the earlier 5%-agreement rule, still supported (config pricing.rule: spread)
 SPREAD = dataclasses.replace(CFG.pricing, rule="spread", big_move_pct=D(15))
 

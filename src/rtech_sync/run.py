@@ -11,6 +11,7 @@ import csv
 import os
 import sys
 import time
+import zlib
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -75,6 +76,15 @@ def _fetch_all(tasks: list, fetcher: Fetcher, deadline: float, now: Callable,
     return results
 
 
+def checked_today(row, ps, today: date, every: int) -> bool:
+    """Each product is checked on one day in `every` (fixed by its SKU, so the shares stay even
+    and predictable). A held big move is re-checked the next day, and a product never priced
+    yet is checked at once."""
+    if every <= 1 or ps.pending or ps.first_seen is None:
+        return True
+    return zlib.crc32(row.sku.encode()) % every == today.toordinal() % every
+
+
 def run_sync(
     cfg: Config,
     rows: list,
@@ -89,6 +99,7 @@ def run_sync(
     sleep: Callable = time.sleep,
     include_pending: bool = False,
     only_new: bool = False,
+    all_products: bool = False,
 ) -> RunResult:
     started = now()
     deadline = started + cfg.fetch.max_runtime_minutes * 60
@@ -100,6 +111,9 @@ def run_sync(
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
     if only_new:  # products the bot has never priced (e.g. created after the morning run began)
         eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
+    if cfg.fetch.check_every_days > 1 and not all_products and not only_new:
+        eligible = [r for r in eligible if checked_today(r, get_price_state(state, r.sku), today,
+                                                          cfg.fetch.check_every_days)]
     if only_brands:
         wanted = {b.lower() for b in only_brands}
         eligible = [r for r in eligible if r.brand.lower() in wanted]
@@ -331,6 +345,7 @@ def main(argv=None) -> int:
     ap.add_argument("--brand", action="append", help="limit to a brand (repeatable)")
     ap.add_argument("--limit", type=int, help="limit number of rows (testing)")
     ap.add_argument("--only-new", action="store_true", help="only rows the bot has never priced")
+    ap.add_argument("--all-products", action="store_true", help="check every product, not today's share")
     ap.add_argument("--today", help="override date YYYY-MM-DD (testing)")
     ap.add_argument("--include-pending", action="store_true",
                     help="dry run only: also evaluate publish=pending_review rows (pilot)")
@@ -365,7 +380,8 @@ def main(argv=None) -> int:
     fetcher = Fetcher(cfg.fetch)
     try:
         rr = run_sync(cfg, rows, state, fetcher, woo, today, args.publish, args.brand, args.limit,
-                      include_pending=args.include_pending, only_new=args.only_new)
+                      include_pending=args.include_pending, only_new=args.only_new,
+                      all_products=args.all_products)
     finally:
         # Save state FIRST: it records what is already live. Losing it would make tomorrow's run
         # compare against old prices and old dates.

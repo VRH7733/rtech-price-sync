@@ -6,8 +6,9 @@ name: daily-prices
 #
 # Daily run, owner's go-live approval (15 Oct 2026, in the project thread): every morning it
 # PUBLISHES the cheapest price of the three sites for catalogue rows with publish=yes and a shop
-# product id. ~5,000 products take ~4.5 h (16 Oct: 255 min), so it starts at 01:00 IST and is done
-# before the shop's 07:30 IST cache purge. GitHub may start scheduled runs late or drop them (the 15 Oct 23:30 UTC
+# product id. Each product is checked once every 3 days (a third each morning, config
+# fetch.check_every_days), 6 s apart per site, at most 1,500 requests per site per run. It starts
+# at 01:00 IST and is done well before the shop's 07:30 IST cache purge. GitHub may start scheduled runs late or drop them (the 15 Oct 23:30 UTC
 # run never fired), so a backup schedule at 03:00 IST runs only if no publish run happened yet
 # that IST day. A manual run is a dry run unless mode=publish is given.
 on:
@@ -26,6 +27,10 @@ on:
         default: false
       only_new:
         description: "only products never priced yet (e.g. created after the morning run started)"
+        type: boolean
+        default: false
+      all_products:
+        description: "check every product, not just today's third (sends 3x the requests; avoid)"
         type: boolean
         default: false
       brand:
@@ -96,12 +101,14 @@ jobs:
           INCLUDE_PENDING: ${{ github.event.inputs.include_pending }}
           BRAND: ${{ github.event.inputs.brand }}
           ONLY_NEW: ${{ github.event.inputs.only_new }}
+          ALL_PRODUCTS: ${{ github.event.inputs.all_products }}
         run: |
           set +e
           ARGS="--catalogue pd/catalogue/rows --data pd/data"
           if [ "$MODE" = "publish" ]; then ARGS="$ARGS --publish"; fi
           if [ "$INCLUDE_PENDING" = "true" ]; then ARGS="$ARGS --include-pending"; fi
           if [ -n "$BRAND" ]; then ARGS="$ARGS --brand $BRAND"; fi
+          if [ "$ALL_PRODUCTS" = "true" ]; then ARGS="$ARGS --all-products"; fi
           if [ "$ONLY_NEW" = "true" ]; then ARGS="$ARGS --only-new"; fi
           python -m rtech_sync.run $ARGS
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"

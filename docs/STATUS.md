@@ -6,6 +6,12 @@
   03:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
   enough; LiteSpeed purges /product/ etc. at 07:30 IST (Harshi, 16 Oct); `shop-check.yml`
   (read-only) compares the live shop with data/latest.json. No price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
+- 16 Oct (owner: "we dont want to get banned ... once in three days"): each product is checked once
+  every 3 days (fetch.check_every_days 3: a third each morning by SKU hash, plus held big moves and
+  never-priced products daily; `--all-products` overrides), 6 s per host, <= 1,500 requests per site
+  per run, stale_days 6. ~680 IB / ~150 Moglix / ~150 HomeRun requests a day (~70 min).
+  IB returned HTTP 403 on its sitemap index on 16 Oct 05:50 UTC: discovery stopped, not retried.
+  The run stops asking a site after 5 refusals in a row (run.STOP_AFTER_BLOCKS).
 - 16 Oct: a row whose ONLY listing is an IB "-ELE." seller listing is no longer fetched (it can only
   be Request a Quote): 2,637 of 5,098 rows, IB requests ~4,665 -> ~2,028 a day.
 - Guards (all send the product to Request a Quote or hold, never to a guessed price):

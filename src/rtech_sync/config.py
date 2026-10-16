@@ -49,6 +49,8 @@ class FetchCfg:
     retry_wait_seconds: float = 20.0
     max_runtime_minutes: float = 450.0
     per_host_request_budget: dict = field(default_factory=dict)
+    # each product is checked once every this many days (a share of the catalogue each day)
+    check_every_days: int = 1
     contact_email: str = PLACEHOLDER_EMAIL
 
     @property
@@ -133,6 +135,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         retry_wait_seconds=float(f.get("retry_wait_seconds", 20)),
         max_runtime_minutes=float(f.get("max_runtime_minutes", 450)),
         per_host_request_budget=dict(f.get("per_host_request_budget", {})),
+        check_every_days=max(1, int(f.get("check_every_days", 1))),
         contact_email=env.get("RTECH_CONTACT_EMAIL") or PLACEHOLDER_EMAIL,
     )
     publisher = PublisherCfg(

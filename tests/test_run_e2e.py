@@ -23,6 +23,10 @@ NAME = "Polycab 1.5 sq mm FR PVC Insulated Wire, Red, 90 m"
 @pytest.fixture
 def cfg():
     c = load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
+    # these tests follow ONE product day by day: check it every day, hide after 3 missed days
+    # (the live 3-day rotation is tested in test_rotation_*)
+    c = dataclasses.replace(c, fetch=dataclasses.replace(c.fetch, check_every_days=1),
+                            pricing=dataclasses.replace(c.pricing, stale_days=3))
     # pages in these tests say "Inclusive of all taxes", but make the assumption explicit too
     return c
 
@@ -315,3 +319,42 @@ def test_site_that_keeps_refusing_is_not_asked_again_this_run(cfg):
     rr = go(cfg, rows, {"version": 1, "items": {}}, f, FakeWoo(), publish=False)
     assert len(f.calls) == runmod.STOP_AFTER_BLOCKS
     assert rr.stats["sources_stopped_after_blocks"] == {"industrybuying": 9 - runmod.STOP_AFTER_BLOCKS}
+
+
+def live_cfg():
+    return load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
+
+
+def test_rotation_config_is_three_days_slow_and_capped():
+    c = live_cfg()
+    assert c.fetch.check_every_days == 3 and c.fetch.min_delay_seconds >= 6
+    assert c.pricing.stale_days == 6  # one missed 3-day check keeps the price, two hide it
+    assert all(n <= 1500 for n in c.fetch.per_host_request_budget.values())
+
+
+def test_rotation_checks_each_product_once_in_three_days():
+    c = live_cfg()
+    rows = [make_row(sku=f"RT-X-{i:03d}", wc_product_id=100 + i, wc_variation_id=None) for i in range(60)]
+    state = {"version": 1, "items": {r.sku: {"first_seen": "2026-10-01", "price": "1000",
+                                             "last_ok": "2026-10-13"} for r in rows}}
+    seen = []
+    for n in range(3):
+        rr = go(c, rows, state, FakeFetcher({}), FakeWoo(), publish=False, today=TODAY + timedelta(days=n))
+        seen.append({it["row"].sku for it in rr.items})
+    assert all(10 <= len(s) <= 30 for s in seen)  # about a third each day
+    assert set().union(*seen) == {r.sku for r in rows} and sum(map(len, seen)) == 60  # each once
+    rr = go(c, rows, state, FakeFetcher({}), FakeWoo(), publish=False, today=TODAY + timedelta(days=3))
+    assert {it["row"].sku for it in rr.items} == seen[0]  # and again 3 days later
+
+
+def test_rotation_rechecks_held_moves_and_new_products_daily_and_all_products_overrides():
+    c = live_cfg()
+    rows = [make_row(sku=f"RT-X-{i:03d}", wc_product_id=100 + i, wc_variation_id=None) for i in range(30)]
+    state = {"version": 1, "items": {r.sku: {"first_seen": "2026-10-01", "price": "1000"} for r in rows}}
+    state["items"]["RT-X-000"]["pending"] = "1500"
+    del state["items"]["RT-X-001"]  # never priced yet
+    for n in range(3):
+        rr = go(c, rows, state, FakeFetcher({}), FakeWoo(), publish=False, today=TODAY + timedelta(days=n))
+        assert {"RT-X-000", "RT-X-001"} <= {it["row"].sku for it in rr.items}
+    rr = go(c, rows, state, FakeFetcher({}), FakeWoo(), publish=False, all_products=True)
+    assert len(rr.items) == 30

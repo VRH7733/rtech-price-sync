@@ -45,22 +45,27 @@ pricing:
     industrybuying: "-ELE."
   default_markup_pct: 0
   default_gst_pct: 18
-  stale_days: 3                    # no validated price for this many days => hide price
+  stale_days: 6                    # no validated price for this many days => hide price (two
+                                   # missed 3-day checks in a row; one miss keeps the price)
   fetch_for_manual_rows: true      # STOP 2: manual_price rows are fetched so you are told when a
                                    # marketplace goes below your price (market_below_manual)
 
 fetch:
-  min_delay_seconds: 3             # per host, across everything in the process
+  # Owner, 16 Oct 2026: "we dont want to get banned ... at max make the update checker once in
+  # three days ... part of checking everyday". Each product is checked once every 3 days (a
+  # third of the catalogue each morning, chosen by SKU), slowly, with a hard cap per site.
+  check_every_days: 3
+  min_delay_seconds: 6             # per host, across everything in the process
   timeout_seconds: 25
   retries: 1                       # one backoff retry on 429/5xx
   retry_wait_seconds: 20
   # Fetching stops after this many minutes so there is time left to publish and commit inside the
-  # 6 h (360 min) GitHub job cap. 300 min = fetching ends ~05:00 IST if the job starts at 00:00.
+  # 6 h (360 min) GitHub job cap and before the shop's 07:30 IST cache purge (run starts 01:00 IST).
   max_runtime_minutes: 300
-  per_host_request_budget:
-    moglix: 5500
-    industrybuying: 5500
-    homerun: 5500
+  per_host_request_budget:         # most requests one run may send to a site
+    moglix: 1500
+    industrybuying: 1500
+    homerun: 1500
 
 publisher:
   batch_size: 25
