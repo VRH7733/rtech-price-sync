@@ -126,7 +126,7 @@ jobs:
           EXTRA=""
           if [ "$REMOVE" = "true" ]; then EXTRA="$EXTRA --remove-illustrations"; fi
           if [ "$DRAW" = "true" ]; then EXTRA="$EXTRA --illustrations"; fi
-          if [ "$APPLY" = "true" ]; then EXTRA="--apply"; fi
+          if [ "$APPLY" = "true" ]; then EXTRA="$EXTRA --apply"; fi
           if [ "$REPLACE" = "true" ]; then EXTRA="$EXTRA --replace-ours"; fi
           python tools/enrich_products.py apply --catalogue-dir pd/catalogue/rows \
             --tile-base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE-{bucket}" \
