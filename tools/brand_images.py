@@ -410,6 +410,13 @@ def prioritise(urls, targets, all_codes, done):
     return first + [u for _, u in sorted(rest)]
 
 
+def _save_pages(path, rows):
+    with open(path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, PAGE_FIELDS)
+        w.writeheader()
+        w.writerows(rows.values())
+
+
 def cmd_crawl(a):
     from rtech_sync.config import load_config
     from rtech_sync.urlcheck import bare_host
@@ -479,14 +486,12 @@ def cmd_crawl(a):
                         row["images"] = json.dumps(checked)
                 out_rows[u] = row
                 if fetched % 50 == 0:
-                    log(f"  {fetched} pages fetched, {s['matched']} with our model numbers")
+                    log(f"  {fetched} pages fetched, {s['matched']} matched")
+                    _save_pages(a.out, out_rows)  # keep progress if the job is stopped
         except Refused as e:
             s["stopped"] = f"STOPPED for this run: {e}"
             log(f"STOP {site}: {e}")
-    with open(a.out, "w", newline="") as fh:
-        w = csv.DictWriter(fh, PAGE_FIELDS)
-        w.writeheader()
-        w.writerows(out_rows.values())
+    _save_pages(a.out, out_rows)
     summary["requests_per_host"] = fetcher.request_log
     Path(a.summary).write_text(json.dumps(summary, indent=1))
     log(json.dumps(summary, indent=1))
