@@ -4,13 +4,16 @@ name: daily-prices
 # catalogue (catalogue/rows/*.csv) and the run data (data/). The private repo is checked out with
 # the DATA_REPO_TOKEN secret; nothing private is committed here, and the public log shows counts.
 #
-# Daily run, owner's go-live approval (15 Oct 2026, in the project thread): every morning at
-# 05:00 IST (23:30 UTC the evening before) it PUBLISHES the cheapest price of the three sites for
-# catalogue rows with publish=yes and a shop product id. GitHub may start scheduled runs late,
-# and may drop them under heavy load. A manual run is a dry run unless mode=publish is given.
+# Daily run, owner's go-live approval (15 Oct 2026, in the project thread): every morning it
+# PUBLISHES the cheapest price of the three sites for catalogue rows with publish=yes and a shop
+# product id. ~5,000 products take ~3-4 h, so it starts at 02:00 IST and is done before the shop's
+# 06:00 IST cache purge. GitHub may start scheduled runs late or drop them (the 15 Oct 23:30 UTC
+# run never fired), so a backup schedule at 04:00 IST runs only if no publish run happened yet
+# that IST day. A manual run is a dry run unless mode=publish is given.
 on:
   schedule:
-    - cron: "30 23 * * *"
+    - cron: "30 20 * * *"   # 02:00 IST
+    - cron: "30 22 * * *"   # 04:00 IST backup, skipped if today's run already published
   workflow_dispatch:
     inputs:
       mode:
@@ -56,19 +59,35 @@ jobs:
           repository: VRH7733/rtech-price-data
           token: ${{ secrets.DATA_REPO_TOKEN }}
           path: pd
+          fetch-depth: 50  # the guard below reads today's commits
+
+      - name: Skip the backup schedule if today's run already published
+        id: guard
+        run: |
+          cd pd
+          today=$(TZ=Asia/Kolkata date +%F)
+          if [ "${{ github.event_name }}" = "schedule" ] && \
+             git log --since="${today}T00:00:00+05:30" --format=%s | grep -q "^price sync ${today} \[publish\]"; then
+            echo "A publish run already happened on $today (IST); skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.skip != 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - run: pip install -r requirements.txt
+        if: steps.guard.outputs.skip != 'true'
 
       - name: Unit tests (fast guard - a broken rule must not reach the shop)
+        if: steps.guard.outputs.skip != 'true'
         run: python -m pytest -q
 
       - name: Run price sync
         id: sync
+        if: steps.guard.outputs.skip != 'true'
         # shop credentials are only visible to this step (not to pip or pytest)
         env:
           WC_URL: ${{ secrets.WC_URL }}
@@ -89,12 +108,12 @@ jobs:
           exit 0
 
       - name: Run summary (counts only)
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         run: |
           [ -f pd/data/summary.md ] && cat pd/data/summary.md >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Commit data files to the private data repo
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         run: |
           cd pd
           git config user.name "price-sync-bot"
@@ -110,7 +129,7 @@ jobs:
           fi
 
       - name: Open flags issue in the private data repo
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
@@ -127,7 +146,7 @@ jobs:
           fi
 
       - name: Fail the job if the sync hit a fatal problem
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         run: |
           code="${{ steps.sync.outputs.exit_code }}"
           if [ -n "$code" ] && [ "$code" != "0" ]; then echo "sync exit code $code"; exit 1; fi

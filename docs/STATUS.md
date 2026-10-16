@@ -2,7 +2,8 @@
 
 ## LIVE since 15 Oct 2026 (owner's approvals typed in the project thread)
 
-- Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every day at 05:00 IST, one site is
+- Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every morning (starts 02:00 IST, backup
+  04:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
   enough; no price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
 - Guards (all send the product to Request a Quote or hold, never to a guessed price):
   outlier_ratio 2 (per product), low outlier, big move >40% held a day, `siblings.py`
