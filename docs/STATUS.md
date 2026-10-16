@@ -143,6 +143,21 @@ a "market range" column in a report, if wanted later. Not built.
   - does not touch products outside that SKU list (new products behave as normal WooCommerce).
   Phase 4 must decide this with the owner before any live publish.
 
+## Official brand product photos (16 Oct 2026, tools/brand_images.py, workflow brand-images)
+
+Owner: authorized dealer for all brands, "use directly official brand img". Only brands' own sites,
+robots.txt and published sitemaps, >= 6 s per host (Havells asks 10 s), first refusal stops a brand.
+Certain matches only (model/catalogue number), quality check (>= 600 px, not banner, plain border).
+- Verified live: 504 products have an official photo (Legrand 413, Havells 91); source per product in
+  meta _rte_image_source/_rte_image_url/_rte_image_brand; `remove --brand-name X` takes a brand off.
+- Legrand: legrand.co.in sitemap product URLs answer 404; Legrand's own catalogue photo by number
+  (assets.legrand.com/pim/PHOTOS-WEB/LG-<n>-WEB-R.jpg) found for 436 of 754 numbers.
+- Havells: image sitemap; Magento original (URL without /cache/<hash>/) is 1200x1200.
+- NOT covered: 3,816 products have no model number in our title (mostly wires); brand sites show
+  only small range banners for wires (KEI/RR Kabel ~500x300), Polycab per-SKU wire photos are 400 px,
+  GM 600x337. 79 WEB- products: 35 current images pass, 23 fail (mostly 200 px Polycab), no certain match.
+- Theme: Blocksy gallery was 3:4 with object-fit cover (cropped square photos); owner set 1/1.
+
 ## Still NOT verified
 
 1. Behaviour at full volume (about 1,300 rows a night). The Phase 2 pilot (137 rows, 248
