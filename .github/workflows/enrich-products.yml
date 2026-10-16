@@ -84,16 +84,21 @@ jobs:
       - name: Draw illustrations
         run: python tools/enrich_products.py render --catalogue-dir pd/catalogue/rows --tiles-dir tiles ${{ steps.sel.outputs.args }}
 
-      - name: Publish illustrations on the release (only new ones)
+      - name: Publish illustrations on releases (only new ones)
         if: github.event.inputs.apply == 'true'
+        # GitHub allows 1,000 files per release, so they are spread over 16 releases by name hash
         run: |
-          gh release view "$RELEASE" >/dev/null 2>&1 || gh release create "$RELEASE" --title "Product illustrations" \
-            --notes "Our own product-type illustrations for rtechelectricals.com product pages (tools/enrich_products.py). Not product photos."
-          gh release view "$RELEASE" --json assets -q '.assets[].name' | sort > have.txt
-          ls tiles | sort > want.txt
-          comm -13 have.txt want.txt > new.txt
-          echo "new illustrations: $(wc -l < new.txt)"
-          cd tiles && xargs -a ../new.txt -n 50 gh release upload "$RELEASE"
+          for b in 0 1 2 3 4 5 6 7 8 9 a b c d e f; do
+            rel="$RELEASE-$b"
+            ls tiles | grep -E -- "-${b}[0-9a-f]{7}\.webp$" | sort > want.txt || true
+            [ -s want.txt ] || continue
+            gh release view "$rel" >/dev/null 2>&1 || gh release create "$rel" --title "Product illustrations $b" \
+              --notes "Our own product-type illustrations for rtechelectricals.com product pages (tools/enrich_products.py). Not product photos."
+            gh release view "$rel" --json assets -q '.assets[].name' | sort > have.txt
+            comm -13 have.txt want.txt > new.txt
+            echo "$rel: $(wc -l < want.txt) needed, $(wc -l < new.txt) new"
+            if [ -s new.txt ]; then (cd tiles && xargs -a ../new.txt -n 50 gh release upload "$rel"); fi
+          done
 
       - name: Update products
         env:
@@ -105,7 +110,7 @@ jobs:
           EXTRA=""
           if [ "$APPLY" = "true" ]; then EXTRA="--apply"; fi
           python tools/enrich_products.py apply --catalogue-dir pd/catalogue/rows \
-            --tile-base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE" \
+            --tile-base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE-{bucket}" \
             --media-map pd/data/media_map.json --report pd/data/enrich_report.md \
             ${{ steps.sel.outputs.args }} $EXTRA
 

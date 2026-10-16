@@ -3,7 +3,7 @@
 
 Usage:
   enrich_products.py render --catalogue-dir DIR --tiles-dir OUT [selection]
-  enrich_products.py apply  --catalogue-dir DIR --tile-base-url URL --media-map JSON --report MD
+  enrich_products.py apply  --catalogue-dir DIR --tile-base-url URL[{bucket}] --media-map JSON --report MD
                             [selection] [--apply]
 Selection: --sku RT-... (repeatable) | --sample N (spread across product types) | --all
 
@@ -65,6 +65,16 @@ def select(rows, skus=None, sample=0, all_rows=False):
             i += 1
         return list({r.sku: r for r in out}.values())
     raise SystemExit("choose --sku, --sample N or --all")
+
+
+def tile_bucket(name: str) -> str:
+    """0-f from the name's hash: GitHub allows only 1,000 files per release, so they are spread over 16."""
+    return name.rsplit("-", 1)[1][0]
+
+
+def tile_url(base: str, name: str) -> str:
+    """base may contain {bucket}, e.g. .../releases/download/product-illustrations-{bucket}"""
+    return base.replace("{bucket}", tile_bucket(name)).rstrip("/") + "/" + name
 
 
 def update_payload(current: dict, plan: dict, ids: dict, tile_url: str, media_map: dict) -> dict:
@@ -194,7 +204,7 @@ def run_apply(rows, a, woo, sleep=time.sleep, log=print):
             skipped["not ours"] += 1
             continue
         plan = plans[r.sku]
-        p = update_payload(cur, plan, ids, a.tile_base_url.rstrip("/") + "/" + plan["tile_name"], media_map)
+        p = update_payload(cur, plan, ids, tile_url(a.tile_base_url, plan["tile_name"]), media_map)
         if len(p) == 1:
             skipped["already complete"] += 1
             continue

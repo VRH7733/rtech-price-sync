@@ -127,3 +127,10 @@ def test_apply_uploads_each_illustration_once_and_skips_foreign_products(tmp_pat
     for b in batches:
         for item in b["update"]:
             assert not (ep.FORBIDDEN & set(item))
+
+
+def test_illustrations_spread_over_16_releases():
+    name = PLAN["tile_name"]
+    url = ep.tile_url("https://g/releases/download/product-illustrations-{bucket}", name)
+    assert url == f"https://g/releases/download/product-illustrations-{name.rsplit('-', 1)[1][0]}/{name}"
+    assert ep.tile_bucket(name) in "0123456789abcdef"
