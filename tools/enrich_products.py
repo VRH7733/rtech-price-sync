@@ -139,15 +139,32 @@ class Woo:
         self.s = session or requests.Session()
         self.timeout = timeout
 
+    def _retry(self, fn):
+        """The shop sometimes drops a connection when busy: wait and try again (3 tries)."""
+        import requests
+        for wait in (20, 60, None):
+            try:
+                r = fn()
+                if r.status_code in (429, 500, 502, 503, 504, 508) and wait:
+                    time.sleep(wait)
+                    continue
+                return r
+            except (requests.ConnectionError, requests.Timeout):
+                if not wait:
+                    raise
+                time.sleep(wait)
+
     def get(self, path, params=None):
-        r = self.s.get(self.base + path, params=params or {}, auth=self.auth, timeout=self.timeout)
+        r = self._retry(lambda: self.s.get(self.base + path, params=params or {}, auth=self.auth,
+                                           timeout=self.timeout))
         try:
             return r.status_code, r.json(), r.headers
         except ValueError:
             return r.status_code, None, r.headers
 
     def post(self, path, payload):
-        r = self.s.post(self.base + path, json=payload, auth=self.auth, timeout=self.timeout)
+        # GETs are safe to repeat; a batch update is too (it sets fields, never adds), so retry both
+        r = self._retry(lambda: self.s.post(self.base + path, json=payload, auth=self.auth, timeout=self.timeout))
         try:
             return r.status_code, r.json()
         except ValueError:
