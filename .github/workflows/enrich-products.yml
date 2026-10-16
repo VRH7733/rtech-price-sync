@@ -115,7 +115,7 @@ jobs:
           cd pd
           git config user.name "price-sync-bot"
           git config user.email "price-sync-bot@users.noreply.github.com"
-          for f in data/enrich_report.md data/media_map.json; do [ -f "$f" ] && git add "$f"; done
+          for f in data/enrich_report.md data/media_map.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
           git commit -m "product content $(date -u +%F) apply=${{ github.event.inputs.apply }}"
           for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
