@@ -234,3 +234,38 @@ def test_plan_name_route_is_separate_and_most_specific_wins():
     rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
     assert rows["W1"]["action"] == "add-name" and rows["W1"]["page_url"] == "https://h/lifeline-plus"
     assert rows["W2"]["action"] == "none" and "never replace a good image" in rows["W2"]["reason"]
+
+
+def test_legrand_catalogue_photo_by_number(tmp_path, monkeypatch):
+    import csv as _csv
+    from types import SimpleNamespace as NS
+    img = _png(1752, 2400 * 1752 // 1752 if False else 1752)
+    calls = []
+
+    class FakeF:
+        cfg = NS(timeout_seconds=5, min_delay_seconds=0)
+        request_log = {}
+
+        def get(self, url):
+            calls.append(url)
+            if "679250" in url:
+                return _FR("ok", 200, content=img, text="")
+            return _FR("error", 404, detail="HTTP 404")
+
+    monkeypatch.setattr(bi, "BrandFetcher", lambda cfg: FakeF())
+    monkeypatch.setenv("RTECH_CONTACT_EMAIL", "info@example.co.in")
+    targets = tmp_path / "t.csv"
+    with open(targets, "w", newline="") as fh:
+        w = _csv.DictWriter(fh, bi.TARGET_FIELDS)
+        w.writeheader()
+        w.writerow({"sku": "L1", "id": "5", "brand": "Legrand", "name": "Legrand Buzzer Myrius Classic White 1 Module, 6792 50"})
+        w.writerow({"sku": "L2", "id": "6", "brand": "Legrand", "name": "Legrand Bell Myrius White, 6792 99"})
+    out, summ = tmp_path / "p.csv", tmp_path / "s.json"
+    cfgp = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+    bi.main(["crawl", "--brand", "legrand", "--targets", str(targets), "--out", str(out), "--summary", str(summ),
+             "--config", cfgp])
+    assert calls == ["https://assets.legrand.com/pim/PHOTOS-WEB/LG-679250-WEB-R.jpg",
+                     "https://assets.legrand.com/pim/PHOTOS-WEB/LG-679299-WEB-R.jpg"]
+    rows = {r["sku"]: r for r in bi.plan(bi.load_targets(targets), {"legrand": list(_csv.DictReader(open(out)))})}
+    assert rows["L1"]["action"] == "add" and rows["L1"]["image_url"].endswith("LG-679250-WEB-R.jpg")
+    assert rows["L2"]["action"] == "none"

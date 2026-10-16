@@ -49,7 +49,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 BRANDS = {
     "havells": {"names": ["Havells"], "sites": ["https://www.havells.com"]},
-    "legrand": {"names": ["Legrand"], "sites": ["https://www.legrand.co.in"]},
+    # legrand.co.in's sitemap lists product URLs that answer 404 (checked 16 Oct 2026 in a browser);
+    # the live product pages show Legrand's own catalogue photo, named by catalogue number, from
+    # assets.legrand.com/pim/PHOTOS-WEB/LG-<number>-WEB-R.jpg, so that photo is fetched directly.
+    "legrand": {"names": ["Legrand"], "sites": [], "pim": "https://assets.legrand.com/pim/PHOTOS-WEB/LG-{code}-WEB-R.jpg"},
     "polycab": {"names": ["Polycab"], "sites": ["https://polycab.com"]},
     "kei": {"names": ["KEI"], "sites": ["https://www.kei-ind.com"]},
     "rrkabel": {"names": ["RR Kabel"], "sites": ["https://www.rrkabel.com"]},
@@ -441,6 +444,35 @@ def cmd_crawl(a):
     def log(m):
         print(m, flush=True)
 
+    pim = BRANDS[key].get("pim")
+    if pim:
+        s = summary["sites"][pim] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
+                                     "images_checked": 0, "stopped": ""}
+        try:
+            for code in sorted(c for c in all_codes if re.fullmatch(r"\d{6}", c)):
+                u = pim.format(code=code)
+                if u in cache:
+                    continue
+                if fetched >= a.max_pages:
+                    s["stopped"] = "page limit for this run"
+                    break
+                ir = fetcher.get(u)
+                fetched += 1
+                s["fetched"] += 1
+                _check(ir, u)
+                q = assess(ir.content) if ir.status == "ok" else {
+                    "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False}
+                s["matched"] += ir.status == "ok"
+                s["images_checked"] += 1
+                out_rows[u] = {"url": u, "status": f"{ir.status}:{ir.http or ''}", "strong": code,
+                               "images": json.dumps([dict(q, url=u)]) if ir.status == "ok" else "[]",
+                               "fetched": time.strftime("%Y-%m-%d"), "name": ""}
+                if fetched % 50 == 0:
+                    log(f"  {fetched} catalogue photos checked, {s['matched']} found")
+                    _save_pages(a.out, out_rows)
+        except Refused as e:
+            s["stopped"] = f"STOPPED for this run: {e}"
+            log(f"STOP {pim}: {e}")
     for site in BRANDS[key]["sites"]:
         s = summary["sites"][site] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
                                       "images_checked": 0, "stopped": ""}
