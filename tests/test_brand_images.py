@@ -163,3 +163,53 @@ def test_resolve_site_follows_a_redirected_robots_txt_and_stops_on_refusal():
     away = Resp(200, "https://other.example/robots.txt", [Resp(301, "x")])
     with pytest.raises(bi.Refused):
         bi.resolve_site(fetcher(away), "https://www.havells.com", print)
+
+
+def test_crawl_end_to_end_with_a_fake_site(tmp_path, monkeypatch):
+    import csv as _csv
+    from types import SimpleNamespace as NS
+    img = _png(1000, 1000)
+    sitemap = (b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+               b'<url><loc>https://www.gmmodular.com/p/plug-top-3002</loc></url>'
+               b'<url><loc>https://www.gmmodular.com/blog/news</loc></url></urlset>')
+    page = ('<html><head><title>GM Plug Top 3002</title><meta property="og:image" content="https://gmmodular.comundefined">'
+            '<script type="application/ld+json">{"@type":"Product","sku":"3002","image":"https://cdn.gmmodular.com/3002.png"}'
+            '</script></head><body><h1>Plug Top</h1></body></html>')
+    calls = []
+
+    class FakeF:
+        cfg = NS(timeout_seconds=5, min_delay_seconds=0)
+        request_log = {}
+        session = NS(get=lambda *a, **k: NS(status_code=200, url="https://www.gmmodular.com/robots.txt", history=[]))
+
+        def _headers(self):
+            return {}
+
+        def get(self, url):
+            calls.append(url)
+            if url.endswith("robots.txt"):
+                return _FR("ok", 200, text="Sitemap: https://www.gmmodular.com/sitemap.xml")
+            if url.endswith("sitemap.xml"):
+                return _FR("ok", 200, content=sitemap, text="")
+            if url.endswith(".png"):
+                return _FR("ok", 200, content=img, text="")
+            return NS(**vars(_FR("ok", 200, text=page)), final_url=url)
+
+    monkeypatch.setattr(bi, "BrandFetcher", lambda cfg: FakeF())
+    monkeypatch.setattr(bi.time, "sleep", lambda s: None)
+    monkeypatch.setenv("RTECH_CONTACT_EMAIL", "info@example.co.in")
+    targets = tmp_path / "t.csv"
+    with open(targets, "w", newline="") as fh:
+        w = _csv.DictWriter(fh, bi.TARGET_FIELDS)
+        w.writeheader()
+        w.writerow({"sku": "G1", "id": "5", "brand": "GM", "name": "GM 3 Pin Plug Top 16 A White, Orange, 3002"})
+    out, summ = tmp_path / "p.csv", tmp_path / "s.json"
+    cfgp = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+    bi.main(["crawl", "--brand", "gm", "--targets", str(targets), "--out", str(out), "--summary", str(summ),
+             "--config", cfgp])
+    assert "https://www.gmmodular.com/blog/news" not in calls
+    rows = list(_csv.DictReader(open(out)))
+    imgs = json.loads(rows[0]["images"])
+    assert [i["ok"] for i in imgs] == [True, False] and imgs[1]["reason"] == "broken image address"
+    plan = bi.plan(bi.load_targets(targets), {"gm": rows})
+    assert plan[0]["action"] == "add" and plan[0]["image_url"] == "https://cdn.gmmodular.com/3002.png"

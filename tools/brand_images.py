@@ -380,6 +380,7 @@ def prioritise(urls, targets, all_codes, done):
 
 def cmd_crawl(a):
     from rtech_sync.config import load_config
+    from rtech_sync.urlcheck import bare_host
     cfg = load_config(a.config)
     cfg.fetch.require_contact_email()
     fetcher = BrandFetcher(cfg.fetch)
@@ -425,8 +426,19 @@ def cmd_crawl(a):
                         s["matched"] += 1
                         checked = []
                         for img in ex["images"][:3]:
+                            host = urlsplit(img).netloc.lower()
+                            if (not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,6}(:\d+)?", host)
+                                    or re.search(r"undefined|null|none", img, re.I)):
+                                checked.append({"ok": False, "w": 0, "h": 0, "reason": "broken image address",
+                                                "white": False, "url": img})
+                                continue
                             ir = fetcher.get(img)
-                            _check(ir, img)
+                            try:
+                                _check(ir, img)
+                            except Refused:
+                                if bare_host(urlsplit(img).netloc) == bare_host(urlsplit(u).netloc):
+                                    raise  # the brand's own site refused us: stop
+                                ir.status = "error"  # an image server elsewhere: skip this image only
                             s["images_checked"] += 1
                             q = assess(ir.content) if ir.status == "ok" else {
                                 "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False}
