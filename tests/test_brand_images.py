@@ -213,3 +213,23 @@ def test_crawl_end_to_end_with_a_fake_site(tmp_path, monkeypatch):
     assert [i["ok"] for i in imgs] == [True, False] and imgs[1]["reason"] == "broken image address"
     plan = bi.plan(bi.load_targets(targets), {"gm": rows})
     assert plan[0]["action"] == "add" and plan[0]["image_url"] == "https://cdn.gmmodular.com/3002.png"
+
+
+def test_name_match_is_strict():
+    t = "Havells Life Line Plus S3 HRFR 1.5 Sq.mm 1 Core Cable Red (90 m)"
+    assert bi.name_match("Havells Life Line Plus S3 HRFR Cable", t, "Havells") == 6
+    assert bi.name_match("Life Line Plus S3 HRFR Cable | Havells India", t, "Havells") == 6
+    assert not bi.name_match("Life Guard FR-LSH Cable", t, "Havells")       # other range
+    assert not bi.name_match("Life Line Plus S3 HRFR Cable Blue", t, "Havells")  # other colour
+    assert not bi.name_match("Cable", t, "Havells")                         # too vague
+    assert not bi.name_match("1.5 sq mm cable", "Havells 15 sq mm cable", "Havells")
+
+
+def test_plan_name_route_is_separate_and_most_specific_wins():
+    targets = [_t("W1", "Havells Life Line Plus S3 HRFR 1.5 Sq.mm 1 Core Cable Red (90 m)"),
+               _t("W2", "Havells Life Line Plus S3 HRFR 2.5 Sq.mm 1 Core Cable Blue (90 m)", image="https://shop/x.jpg")]
+    pages = [dict(_page("https://h/lifeline", "Life Line"), name="Life Line Cable"),
+             dict(_page("https://h/lifeline-plus", "Life Line Plus"), name="Life Line Plus S3 HRFR Cable")]
+    rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
+    assert rows["W1"]["action"] == "add-name" and rows["W1"]["page_url"] == "https://h/lifeline-plus"
+    assert rows["W2"]["action"] == "none" and "never replace" in rows["W2"]["reason"]

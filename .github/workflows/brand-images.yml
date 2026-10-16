@@ -20,6 +20,10 @@ on:
       limit:
         description: "apply to at most this many products (0 = all planned)"
         default: "0"
+      allow_name:
+        description: "also apply product-name matches (weaker than model number)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -153,7 +157,10 @@ jobs:
           WC_URL: ${{ secrets.WC_URL }}
           WC_KEY: ${{ secrets.WC_KEY }}
           WC_SECRET: ${{ secrets.WC_SECRET }}
-        run: python tools/brand_images.py apply --plan pd/brand-images/plan.csv --limit ${{ github.event.inputs.limit }}
+          ALLOW_NAME: ${{ github.event.inputs.allow_name }}
+        run: |
+          EXTRA=""; if [ "$ALLOW_NAME" = "true" ]; then EXTRA="--allow-name"; fi
+          python tools/brand_images.py apply --plan pd/brand-images/plan.csv --limit ${{ github.event.inputs.limit }} $EXTRA
       - name: Report
         if: always()
         run: |

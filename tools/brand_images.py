@@ -67,7 +67,11 @@ SKIP_PAGE = re.compile(r"/(blog|blogs|news|careers?|investors?|media|press|event
 BAD_IMAGE_URL = re.compile(r"logo|placeholder|banner|favicon|sprite|icon|\.svg|\.gif", re.I)
 MIN_SIDE, MAX_RATIO, MIN_PLAIN_BORDER, BIGGER = 600, 1.6, 0.85, 1.5
 SHARED_IMAGE_PAGES = 4
-PAGE_FIELDS = ["url", "status", "strong", "images", "fetched"]
+PAGE_FIELDS = ["url", "status", "strong", "images", "fetched", "name"]
+NAME_STOP = {"buy", "online", "india", "price", "best", "the", "and", "with", "for", "of", "in", "by", "a", "an",
+             "product", "products", "details", "shop", "new", "range"}
+COLOURS = {"red", "blue", "green", "yellow", "black", "white", "grey", "gray", "brown", "orange", "pink", "ivory",
+           "silver", "gold", "beige", "violet", "purple"}
 TARGET_FIELDS = ["sku", "id", "brand", "name", "web", "ours", "image_src", "image_id", "has_our_image"]
 
 
@@ -103,6 +107,28 @@ def page_codes(strong: str, all_codes: set) -> set:
     return strong_tokens(strong) & all_codes
 
 
+def _name_words(s: str) -> list:
+    s = re.sub(r"(\d)\.(\d)", r"\1_\2", s.lower())
+    return [w for w in re.findall(r"[a-z0-9_]+", s) if w not in NAME_STOP]
+
+
+def name_match(page_name: str, title: str, brand: str) -> int:
+    """Second, weaker route (used only with --allow-name): every word of the brand page's product
+    name (brand and filler words left out) is a word of our title, at least 2 words, and no colour
+    on the page that our title does not have. Returns the number of words (0 = no match)."""
+    if not page_name:
+        return 0
+    page_name = page_name.split("|")[0].split(" - ")[0]
+    bw = set(_name_words(brand))
+    words = [w for w in _name_words(page_name) if w not in bw]
+    ours = set(_name_words(title))
+    if len(words) < 2 or not all(w in ours for w in words):
+        return 0
+    if any(w in COLOURS and w not in ours for w in words):
+        return 0
+    return len(words)
+
+
 # ---------------------------------------------------------------- page parsing
 def extract_page(html: str, url: str) -> dict:
     """The strong text (title, h1, og:title, JSON-LD product name/sku/mpn/model, URL path) and the
@@ -120,9 +146,12 @@ def extract_page(html: str, url: str) -> dict:
     if soup.title and soup.title.string:
         strong.append(soup.title.string.strip())
     h1 = soup.find("h1")
+    names = []
     if h1:
         strong.append(h1.get_text(" ", strip=True))
-    strong += list(meta("og:title"))
+        names.append(strong[-1])
+    og = list(meta("og:title"))
+    strong += og
     for tag in soup.find_all("script", type=re.compile("ld\\+json", re.I)):
         try:
             data = json.loads(tag.string or tag.get_text() or "")
@@ -141,6 +170,8 @@ def extract_page(html: str, url: str) -> dict:
             types = types if isinstance(types, list) else [types]
             if "Product" not in types:
                 continue
+            if isinstance(node.get("name"), str):
+                names.insert(0, node["name"])
             for k in ("name", "sku", "mpn", "model", "productID", "gtin13"):
                 v = node.get(k)
                 if isinstance(v, (str, int)):
@@ -161,7 +192,8 @@ def extract_page(html: str, url: str) -> dict:
         if u.startswith("http") and u not in seen and not BAD_IMAGE_URL.search(urlsplit(u).path):
             seen.add(u)
             clean.append(u)
-    return {"strong": " | ".join(s for s in strong if s)[:1500], "images": clean[:4]}
+    name = (names + og + [""])[0]
+    return {"strong": " | ".join(s for s in strong if s)[:1500], "images": clean[:4], "name": name[:300]}
 
 
 # ---------------------------------------------------------------- image quality
@@ -421,8 +453,9 @@ def cmd_crawl(a):
                        "fetched": time.strftime("%Y-%m-%d")}
                 if fr.status == "ok":
                     ex = extract_page(fr.text, fr.final_url or u)
-                    row["strong"] = ex["strong"]
-                    if page_codes(ex["strong"], all_codes):
+                    row["strong"], row["name"] = ex["strong"], ex["name"]
+                    named = any(name_match(ex["name"], t["name"], t["brand"]) for t in targets)
+                    if page_codes(ex["strong"], all_codes) or named:
                         s["matched"] += 1
                         checked = []
                         for img in ex["images"][:3]:
@@ -495,10 +528,9 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
             row = {"sku": t["sku"], "id": t["id"], "brand": t["brand"], "name": t["name"], "code": "",
                    "page_url": "", "image_url": "", "w": "", "h": "", "action": "none", "reason": ""}
             codes = codes_for(t["name"])
-            if not codes:
-                row["reason"] = "no model number in our title"
-            else:
-                best, why = None, "no brand page with this model number"
+            best, why = None, "no model number in our title"
+            if codes:
+                why = "no brand page with this model number"
                 for c in sorted(codes):
                     for p, bad in by_code.get(c, []):
                         if bad:
@@ -513,10 +545,34 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                                 best = (p, im, c)
                     if by_code.get(c) and not best and why.startswith("no brand page"):
                         why = "brand page has no product image"
+            how = "model"
+            if not best:  # weaker route, applied only with --allow-name
+                scored = []
+                for p in pages:
+                    sc = name_match(p.get("name", ""), t["name"], t["brand"])
+                    if not sc:
+                        continue
+                    good = [im for im in json.loads(p.get("images") or "[]")
+                            if im.get("ok") and img_pages[im["url"]] < SHARED_IMAGE_PAGES]
+                    if good:
+                        scored.append((sc, max(good, key=lambda i: i["w"] * i["h"]), p))
+                if scored:
+                    top = max(x[0] for x in scored)
+                    tops = [x for x in scored if x[0] == top]
+                    if len({x[1]["url"] for x in tops}) == 1:
+                        best, how = (tops[0][2], tops[0][1], "name: " + tops[0][2].get("name", "")[:80]), "name"
+                    else:
+                        why += "; product-name match is ambiguous"
+            if True:
                 if best:
                     p, im, c = best
                     row.update(code=c, page_url=p["url"], image_url=im["url"], w=im["w"], h=im["h"])
-                    if not t["image_src"]:
+                    if how == "name":
+                        if not t["image_src"]:
+                            row["action"], row["reason"] = "add-name", "no image now; matched by product name"
+                        else:
+                            row["reason"] = "has an image; product-name matches never replace"
+                    elif not t["image_src"]:
                         row["action"], row["reason"] = "add", "no image now"
                     elif t["has_our_image"]:
                         row["reason"] = "already has an official image from this tool"
@@ -585,7 +641,8 @@ def apply_payload(row) -> dict:
 
 def cmd_apply(a, woo, sleep=time.sleep):
     rows = list(csv.DictReader(open(a.plan, newline="")))
-    todo = [r for r in rows if r["action"] in ("add", "replace")]
+    allowed = ("add", "replace") + (("add-name",) if a.allow_name else ())
+    todo = [r for r in rows if r["action"] in allowed]
     if a.limit:
         todo = todo[:a.limit]
     ids = [int(r["id"]) for r in todo]
@@ -625,7 +682,7 @@ def cmd_apply(a, woo, sleep=time.sleep):
         if not cur:
             r["result"] = "not on shop"
             continue
-        if r["action"] == "add" and cur.get("images"):
+        if r["action"] in ("add", "add-name") and cur.get("images"):
             r["result"] = "skipped: has an image now"
             continue
         p = apply_payload(r)
@@ -697,6 +754,12 @@ def cmd_report(a):
     lines.append(f"| other brands (no site checked) | {len(other)} | 0 | 0 | {len(other)} |")
     lines.append(f"| **All** | {tot['products'] + len(other)} | {tot['has']} | {tot['added']} | "
                  f"{tot['products'] - tot['has'] + len(other)} |")
+    waiting = collections.Counter(r["brand"] for r in rows if r["action"] == "add-name" and not r.get("result"))
+    if waiting:
+        lines += ["", f"Product-name matches found but not applied (need --allow-name): {sum(waiting.values())} "
+                  f"({', '.join(f'{b} {n}' for b, n in waiting.most_common())})"]
+        for r in [r for r in rows if r["action"] == "add-name"][:8]:
+            lines.append(f"- {r['name']} <- {r['page_url']} ({r['code']})")
     reasons = collections.Counter(r["reason"].split(":")[0] for r in rows if r["action"] == "none")
     lines += ["", "## Why products have no official image", ""]
     lines += [f"- {k}: {v}" for k, v in reasons.most_common()]
@@ -735,6 +798,7 @@ def main(argv=None):
     s.add_argument("--plan", required=True)
     s.add_argument("--batch", type=int, default=5)
     s.add_argument("--limit", type=int, default=0)
+    s.add_argument("--allow-name", action="store_true", help="also apply product-name matches (add-name)")
     s = sub.add_parser("remove")
     s.add_argument("--brand-name", required=True)
     s = sub.add_parser("report")
