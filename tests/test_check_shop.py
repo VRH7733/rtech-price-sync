@@ -20,7 +20,7 @@ def test_expected_state_quote_for_hidden_or_unpriced():
 def test_store_state_reads_minor_units_and_quote_button():
     priced = {"type": "simple", "prices": {"price": "199000", "currency_minor_unit": 2},
               "add_to_cart": {"text": "Add to cart"}}
-    quote = {"type": "external", "prices": {"price": "", "currency_minor_unit": 2},
+    quote = {"type": "external", "prices": {"price": "0", "currency_minor_unit": 2},
              "add_to_cart": {"text": "Request a Quote"}}
     assert cs.store_state(priced) == (Decimal("1990"), False)
     assert cs.store_state(quote) == (None, True)

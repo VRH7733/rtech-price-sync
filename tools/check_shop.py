@@ -43,7 +43,7 @@ def store_state(p: dict):
     prices = p.get("prices") or {}
     raw = prices.get("price") or ""
     price = None
-    if raw:
+    if raw and Decimal(raw) != 0:  # the Store API gives "0" for a product with no price
         price = Decimal(raw) / (Decimal(10) ** int(prices.get("currency_minor_unit", 2)))
     text = ((p.get("add_to_cart") or {}).get("text") or "").lower()
     return price, p.get("type") == "external" and QUOTE in text
