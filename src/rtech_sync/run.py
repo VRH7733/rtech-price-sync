@@ -40,18 +40,34 @@ class RunResult:
     changed: list = field(default_factory=list)  # (sku, old, new, action)
 
 
-def _fetch_all(tasks: list, fetcher: Fetcher, deadline: float, now: Callable) -> dict:
-    """tasks: (row, source, url). One worker per host so per-host pacing is never exceeded."""
+# A site that refuses this many pages in a row (HTTP 401/403/429 or a block page) is not asked
+# again in this run: its remaining products keep their last price (hold) until it answers again.
+STOP_AFTER_BLOCKS = 5
+
+
+def _fetch_all(tasks: list, fetcher: Fetcher, deadline: float, now: Callable,
+               stopped: Optional[dict] = None) -> dict:
+    """tasks: (row, source, url). One worker per host so per-host pacing is never exceeded.
+    stopped (out): source -> number of pages left unasked after the site kept refusing us."""
     by_source: dict = defaultdict(list)
     for t in tasks:
         by_source[t[1]].append(t)
     results: dict = {}
+    stopped = stopped if stopped is not None else {}
 
     def worker(source: str):
-        for row, src, url in by_source[source]:
+        in_a_row = 0
+        todo = by_source[source]
+        for i, (row, src, url) in enumerate(todo):
             if now() > deadline:
                 return
-            results[(row.sku, src)] = fetcher.get(url, budget_key=src)
+            res = fetcher.get(url, budget_key=src)
+            results[(row.sku, src)] = res
+            in_a_row = in_a_row + 1 if res.status == "blocked" else 0
+            if in_a_row >= STOP_AFTER_BLOCKS:
+                stopped[source] = len(todo) - i - 1
+                print(f"{source}: {in_a_row} pages refused in a row; not asking it again this run")
+                return
 
     if by_source:
         with ThreadPoolExecutor(max_workers=len(by_source)) as ex:
@@ -110,7 +126,8 @@ def run_sync(
         for s in cfg.sources:
             if s in r.urls:
                 tasks.append((r, s, r.urls[s]))
-    fetched = _fetch_all(tasks, fetcher, deadline, now)
+    stopped: dict = {}
+    fetched = _fetch_all(tasks, fetcher, deadline, now, stopped)
 
     for r in eligible:
         ps = get_price_state(state, r.sku)
@@ -225,6 +242,7 @@ def run_sync(
         "fatal": rr.publish_report.fatal,
         "runtime_min": round((now() - started) / 60, 1),
         "requests_per_host": dict(fetcher.request_log),
+        "sources_stopped_after_blocks": dict(stopped),
     }
     return rr
 

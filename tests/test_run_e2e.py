@@ -304,3 +304,14 @@ def test_seller_listing_only_row_is_not_fetched_and_shows_quote(cfg):
     assert sell.action == "hide" and sell.flags == ["unconfirmed_listing:industrybuying"]
     assert get_price_state(state, "SELL").hidden
     assert rr.stats["rows_not_refreshed"] == 0
+
+
+def test_site_that_keeps_refusing_is_not_asked_again_this_run(cfg):
+    rows = [make_row(sku=f"R{i}", wc_product_id=10 + i, wc_variation_id=None,
+                     urls={"industrybuying": f"https://www.industrybuying.com/p-EL.X.{i}"}) for i in range(9)]
+    blocked = {r.urls["industrybuying"]: FetchResult(r.urls["industrybuying"], "blocked", 403, detail="HTTP 403")
+               for r in rows}
+    f = FakeFetcher(blocked)
+    rr = go(cfg, rows, {"version": 1, "items": {}}, f, FakeWoo(), publish=False)
+    assert len(f.calls) == runmod.STOP_AFTER_BLOCKS
+    assert rr.stats["sources_stopped_after_blocks"] == {"industrybuying": 9 - runmod.STOP_AFTER_BLOCKS}
