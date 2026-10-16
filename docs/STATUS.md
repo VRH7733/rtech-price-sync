@@ -6,6 +6,8 @@
   03:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
   enough; LiteSpeed purges /product/ etc. at 07:30 IST (Harshi, 16 Oct); `shop-check.yml`
   (read-only) compares the live shop with data/latest.json. No price => in-stock "Request a Quote" product. Code: `decision.py` (rule: cheapest).
+- 16 Oct: a row whose ONLY listing is an IB "-ELE." seller listing is no longer fetched (it can only
+  be Request a Quote): 2,637 of 5,098 rows, IB requests ~4,665 -> ~2,028 a day.
 - Guards (all send the product to Request a Quote or hold, never to a guessed price):
   outlier_ratio 2 (per product), low outlier, big move >40% held a day, `siblings.py`
   sibling_ratio 2 (single-site wire vs same brand/sqmm/cores/length), needs_second_site

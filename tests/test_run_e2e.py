@@ -288,3 +288,19 @@ def test_only_new_prices_just_the_products_never_seen_before(cfg):
     rr = go(cfg, rows, state, FakeFetcher(pages(1000, 1020, 1030)), FakeWoo(), publish=True, only_new=True)
     assert [it["row"].sku for it in rr.items] == ["NEW"]
     assert get_price_state(state, "OLD").price == D(990)
+
+
+def test_seller_listing_only_row_is_not_fetched_and_shows_quote(cfg):
+    ele = "https://www.industrybuying.com/cable-ties-legrand-ELE.CAB.1"
+    state = {"version": 1, "items": {"SELL": {"first_seen": "2026-10-13", "price": "990"}}}
+    rows = [make_row(sku="SELL", urls={"industrybuying": ele}),
+            make_row(sku="PAIR", wc_product_id=11, wc_variation_id=101,
+                     urls={"industrybuying": ele, "moglix": "https://www.moglix.com/p/a"})]
+    f = FakeFetcher(pages(1000, None, None))
+    woo = FakeWoo()
+    rr = go(cfg, rows, state, f, woo, publish=True)
+    assert f.calls.count(ele) == 1  # only for PAIR, which has a second site
+    sell = next(it for it in rr.items if it["row"].sku == "SELL")["decision"]
+    assert sell.action == "hide" and sell.flags == ["unconfirmed_listing:industrybuying"]
+    assert get_price_state(state, "SELL").hidden
+    assert rr.stats["rows_not_refreshed"] == 0

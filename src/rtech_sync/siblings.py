@@ -95,3 +95,14 @@ def apply_listing_guard(items: list, patterns: dict) -> list:
             d.flags.append(f"unconfirmed_listing:{src}")
             changed.append(it["row"].sku)
     return changed
+
+
+def seller_listing_only(row, sources, patterns) -> Optional[str]:
+    """The source whose listing is this row's ONLY marketplace URL and matches patterns[source]
+    (e.g. an IndustryBuying "-ELE." seller listing), else None. Such a row can only end up as
+    Request a Quote, so the daily run does not spend a request on it."""
+    have = [s for s in sources if row.urls.get(s)]
+    if len(have) != 1:
+        return None
+    pat = (patterns or {}).get(have[0])
+    return have[0] if pat and pat in row.urls[have[0]] else None

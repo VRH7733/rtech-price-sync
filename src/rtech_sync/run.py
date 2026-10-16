@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from . import report
 from .catalogue import CatalogueError, load_catalogue, validate
 from .config import Config, ConfigError, load_config
-from .siblings import apply_listing_guard, apply_sibling_guard
+from .siblings import apply_listing_guard, apply_sibling_guard, seller_listing_only
 from .decision import decide
 from .fetcher import Fetcher
 from .models import SourceResult
@@ -93,9 +93,19 @@ def run_sync(
     if limit:
         eligible = eligible[:limit]
 
+    # a row whose only listing needs a second site cannot get a price today: skip the request
+    seller_only = {}
+    if cfg.pricing.rule == "cheapest":
+        for r in eligible:
+            src = seller_listing_only(r, cfg.sources, cfg.pricing.needs_second_site)
+            if src:
+                seller_only[r.sku] = src
+
     tasks = []
     for r in eligible:
         if r.manual_price is not None and not cfg.pricing.fetch_for_manual_rows:
+            continue
+        if r.sku in seller_only:
             continue
         for s in cfg.sources:
             if s in r.urls:
@@ -122,6 +132,13 @@ def run_sync(
         if publish and ps.first_seen is None:
             set_item(state, r.sku, first_seen=today.isoformat())
 
+    for it in rr.items:
+        src = seller_only.get(it["row"].sku)
+        if src:
+            d = it["decision"]
+            d.action, d.price, d.pending, d.refreshed = "hide", None, None, False
+            d.flags = [f"unconfirmed_listing:{src}"]
+            d.note = "only listing is a seller listing; not fetched"
     if cfg.pricing.rule == "cheapest":
         apply_sibling_guard(rr.items, cfg.pricing.sibling_ratio)
         apply_listing_guard(rr.items, cfg.pricing.needs_second_site)
@@ -191,6 +208,7 @@ def run_sync(
         for it in rr.items
         if any(x.status == "not_refreshed" for x in it["results"])
         and not any(x.usable for x in it["results"])
+        and it["row"].sku not in seller_only
     )
     rr.stats = {
         "mode": "PUBLISH (live)" if publish else "DRY RUN (nothing changed)",
