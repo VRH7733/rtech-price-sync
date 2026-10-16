@@ -634,7 +634,8 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                             why = bad
                             continue
                         for im in json.loads(p.get("images") or "[]"):
-                            if img_pages[im["url"]] >= SHARED_IMAGE_PAGES:
+                            named_file = c in _norm(urlsplit(im["url"]).path.rsplit("/", 1)[-1])
+                            if img_pages[im["url"]] >= SHARED_IMAGE_PAGES and not named_file:
                                 why = "brand page image is shared by many pages (not product-specific)"
                             elif not im.get("ok"):
                                 why = f"brand image failed quality check: {im.get('reason')}"
@@ -691,6 +692,10 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                         row["reason"] = "product already has an image; kept"
                 else:
                     row["reason"] = why
+            cq = current_quality.get(t["sku"]) if t["web"] else None
+            if cq and row["action"] == "none":
+                row["reason"] += (f"; current image {cq['w']}x{cq['h']} "
+                                  + ("passes the quality check" if cq["ok"] else f"fails: {cq['reason']}"))
             rows.append(row)
     return rows
 
@@ -739,6 +744,13 @@ def apply_payload(row) -> dict:
     return p
 
 
+def _night_ist(now=None) -> bool:
+    """00:30-06:00 IST belongs to the nightly price run (01:00, backup 03:00): no image writes then."""
+    import datetime as dt
+    t = (now or dt.datetime.now(dt.timezone.utc)) + dt.timedelta(hours=5, minutes=30)
+    return (t.hour, t.minute) >= (0, 30) and t.hour < 6
+
+
 def cmd_apply(a, woo, sleep=time.sleep):
     rows = list(csv.DictReader(open(a.plan, newline="")))
     allowed = ("add", "replace") + (("add-name",) if a.allow_name else ())
@@ -778,6 +790,9 @@ def cmd_apply(a, woo, sleep=time.sleep):
         sleep(3)
 
     for r in todo:
+        if _night_ist():
+            print("00:30 IST reached: stopping so the nightly price run has the shop; rerun apply later")
+            break
         cur = current.get(int(r["id"]))
         if not cur:
             r["result"] = "not on shop"

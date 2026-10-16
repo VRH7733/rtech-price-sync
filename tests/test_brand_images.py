@@ -282,3 +282,19 @@ def test_image_sitemap_gives_the_photo_without_opening_the_page():
     imgs, title = got["https://havells.com/fancy-jumbo-batten-holder-metal-ring-ahlhgxw060.html"]
     assert title == "Fancy Jumbo Batten Holder"
     assert bi.original_image(imgs[0]) == "https://havells.com/media/catalog/product/import/Switches/AHLHGXW060.jpg"
+
+
+def test_image_named_by_the_model_number_may_appear_on_several_pages():
+    targets = [_t("H1", "Havells Donato Espresso GHBCMAKS080")]
+    img = "https://havells.com/media/catalog/product/import/Appliances/GHBCMAKS080.jpg"
+    pages = [_page(f"https://havells.com/donato-espresso-ghbcmaks080{s}.html", "GHBCMAKS080", img=img)
+             for s in ("", "-c", "-1", "-2", "-3")]
+    assert bi.plan(targets, {"havells": pages})[0]["action"] == "add"
+
+
+def test_no_image_writes_during_the_nightly_price_window():
+    import datetime as dt
+    utc = dt.timezone.utc
+    assert not bi._night_ist(dt.datetime(2026, 10, 16, 18, 0, tzinfo=utc))   # 23:30 IST
+    assert bi._night_ist(dt.datetime(2026, 10, 16, 19, 0, tzinfo=utc))       # 00:30 IST
+    assert not bi._night_ist(dt.datetime(2026, 10, 17, 1, 0, tzinfo=utc))    # 06:30 IST
