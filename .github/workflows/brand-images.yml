@@ -1,0 +1,171 @@
+name: brand-images
+
+# Manual. Official product images from the brands' own websites (tools/brand_images.py):
+# robots.txt and published sitemaps only, >= 6 s per host, honest User-Agent, first refusal stops
+# that brand. Certain model-number matches only; images must pass the quality check.
+# apply=false only writes the plan and report to the private data repo (brand-images/).
+on:
+  workflow_dispatch:
+    inputs:
+      brands:
+        description: "space-separated: havells legrand polycab kei rrkabel finolex gm"
+        default: "havells legrand polycab kei rrkabel finolex gm"
+      max_pages:
+        description: "max brand pages fetched per brand this run (6 s each)"
+        default: "700"
+      apply:
+        description: "put the planned images on the shop (false = plan only)"
+        type: boolean
+        default: false
+      limit:
+        description: "apply to at most this many products (0 = all planned)"
+        default: "0"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pillow
+      - run: python -m pytest -q
+      - name: Read shop products (read only)
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+        run: python tools/brand_images.py targets --out targets.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: targets
+          path: targets.csv
+          retention-days: 1
+
+  crawl:
+    needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        brand: [havells, legrand, polycab, kei, rrkabel, finolex, gm]
+    env:
+      PYTHONPATH: src
+      RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+    steps:
+      - name: Selected?
+        id: on
+        env:
+          BRANDS: ${{ github.event.inputs.brands }}
+        run: case " $BRANDS " in *" ${{ matrix.brand }} "*) echo "go=1" >> "$GITHUB_OUTPUT";; esac
+      - uses: actions/checkout@v4
+        if: steps.on.outputs.go == '1'
+      - uses: actions/setup-python@v5
+        if: steps.on.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.on.outputs.go == '1'
+        run: pip install -r requirements.txt pillow
+      - name: Checkout private data repo (earlier pages)
+        if: steps.on.outputs.go == '1'
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+      - uses: actions/download-artifact@v4
+        if: steps.on.outputs.go == '1'
+        with:
+          name: targets
+      - name: Crawl ${{ matrix.brand }}
+        if: steps.on.outputs.go == '1'
+        run: |
+          mkdir -p out
+          python tools/brand_images.py crawl --brand ${{ matrix.brand }} --targets targets.csv \
+            --previous pd/brand-images/pages_${{ matrix.brand }}.csv --max-pages ${{ github.event.inputs.max_pages }} \
+            --out out/pages_${{ matrix.brand }}.csv --summary out/summary_${{ matrix.brand }}.json \
+            2>&1 | tee out/log_${{ matrix.brand }}.txt
+      - uses: actions/upload-artifact@v4
+        if: steps.on.outputs.go == '1' && always()
+        with:
+          name: pages-${{ matrix.brand }}
+          path: out/
+          retention-days: 3
+
+  plan-apply:
+    needs: [targets, crawl]
+    if: always() && needs.targets.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    concurrency:
+      group: shop-writes
+      cancel-in-progress: false
+    env:
+      PYTHONPATH: src
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pillow
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Merge page caches
+        run: |
+          mkdir -p pd/brand-images
+          cp art/targets/targets.csv pd/brand-images/targets.csv
+          for d in art/pages-*; do [ -d "$d" ] && cp "$d"/* pd/brand-images/; done
+          ls -la pd/brand-images
+      - name: Plan
+        run: |
+          python tools/brand_images.py plan --targets pd/brand-images/targets.csv --pages-dir pd/brand-images \
+            --out pd/brand-images/plan.csv --check-current
+      - name: Do not overlap the price run (both write to the shop)
+        if: github.event.inputs.apply == 'true'
+        run: |
+          for wf in daily-prices.yml discover.yml create-drafts.yml enrich-products.yml; do
+            n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf" --json status \
+                -q '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+            if [ "$n" != "0" ]; then echo "::error::$wf is running; try again later"; exit 1; fi
+          done
+      - name: Apply
+        if: github.event.inputs.apply == 'true'
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+        run: python tools/brand_images.py apply --plan pd/brand-images/plan.csv --limit ${{ github.event.inputs.limit }}
+      - name: Report
+        if: always()
+        run: |
+          python tools/brand_images.py report --plan pd/brand-images/plan.csv --targets pd/brand-images/targets.csv \
+            --pages-dir pd/brand-images --out pd/brand-images/report.md || true
+      - name: Save to the private data repo
+        if: always()
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add brand-images
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -q -m "brand images $(date -u +%F) apply=${{ github.event.inputs.apply }}"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
