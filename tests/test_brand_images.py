@@ -138,6 +138,7 @@ def test_refusal_stops_the_brand():
     with pytest.raises(bi.Refused):
         bi._check(_FR("ok", 200, text="Please complete the captcha"), "page")
     bi._check(_FR("ok", 200, text="<html>" + "x" * 30000 + "recaptcha on the contact form</html>"), "page")
+    bi._check(_FR("ok", 200, text="<html><h1>Green wires</h1><form>reCAPTCHA</form></html>"), "page")
     with pytest.raises(bi.Refused):
         bi._check(_FR("robots_blocked", detail="robots.txt unavailable (429/5xx/network)"), "page")
     bi._check(_FR("robots_blocked", detail="disallowed by robots.txt: /x"), "page")  # just skipped

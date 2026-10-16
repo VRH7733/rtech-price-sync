@@ -317,7 +317,9 @@ def _check(fr, what):
     from rtech_sync.fetcher import looks_blocked
     is_image = fr.content[:3] == b"\xff\xd8\xff" or fr.content[:4] in (b"\x89PNG", b"RIFF")
     # a challenge page is small; a full product page may just mention reCAPTCHA on a contact form
-    challenge = fr.status == "ok" and not is_image and len(fr.text or "") < 20000 and looks_blocked(fr.text)
+    text = fr.text or ""
+    challenge = (fr.status == "ok" and not is_image and len(text) < 20000 and "<h1" not in text.lower()
+                 and looks_blocked(text))
     if fr.status == "blocked" or challenge:
         raise Refused(f"{what}: {fr.status} {fr.http or ''} {fr.detail}".strip())
     if fr.status == "robots_blocked" and "unavailable" in fr.detail:
