@@ -4,3 +4,5 @@ PyYAML>=6.0
 pytest>=8.0
 # IANA time zones for zoneinfo("Asia/Kolkata"): Windows ships none (a test failed without it, 15 Oct 2026)
 tzdata>=2024.1
+# product tiles and photo quality checks (src/rtech_sync/tiles.py, tools/brand_images.py)
+Pillow>=10.0
