@@ -153,5 +153,5 @@ def build_summary(stats: dict) -> str:
         lines.append("- Requests per host: " + ", ".join(f"{h}: {n}" for h, n in sorted(reqs.items())))
     for src, left in sorted(stats.get("sources_stopped_after_blocks", {}).items()):
         lines.append(f"- **{src} kept refusing our requests (blocked); stopped asking it, {left} pages not "
-                     f"requested. Those products keep their last price for up to 3 days.**")
+                     f"requested. Those products keep their last price until it is too old (pricing.stale_days).**")
     return "\n".join(lines) + "\n"
