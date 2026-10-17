@@ -13,8 +13,12 @@ name: daily-prices
 # that IST day. A manual run is a dry run unless mode=publish is given.
 on:
   schedule:
+    # GitHub starts scheduled runs late or not at all (16-17 Oct: 2.5 h late / never), so several
+    # tries; each is skipped once today's (IST) run has published.
+    - cron: "40 18 * * *"   # 00:10 IST
     - cron: "30 19 * * *"   # 01:00 IST
-    - cron: "30 21 * * *"   # 03:00 IST backup, skipped if today's run already published
+    - cron: "30 20 * * *"   # 02:00 IST
+    - cron: "30 21 * * *"   # 03:00 IST
   workflow_dispatch:
     inputs:
       mode:
