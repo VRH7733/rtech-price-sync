@@ -194,15 +194,16 @@ def wire_key(text: str, brand: str) -> dict | None:
             "variant": variant}
 
 
-def wire_match(page: dict, ours: dict) -> bool:
-    """Same range, size, cores and colour; same length when both say it; FR-type words agree when the
+def wire_match(page: dict, ours: dict, same_length: bool = True) -> bool:
+    """Same range, size, cores and colour; same length when both say it (unless same_length=False,
+    the fallback when the brand shows only another coil length); FR-type words agree when the
     brand page names them (the range name already implies them when it does not)."""
     if not page or not ours:
         return False
     if (page["range"], page["size"], page["cores"], page["colour"]) != (ours["range"], ours["size"], ours["cores"],
                                                                         ours["colour"]):
         return False
-    if page["length"] and ours["length"] and page["length"] != ours["length"]:
+    if same_length and page["length"] and ours["length"] and page["length"] != ours["length"]:
         return False
     if page["variant"] and ours["variant"] and not (page["variant"] <= ours["variant"] or ours["variant"] <= page["variant"]):
         return False
@@ -606,7 +607,10 @@ class Wanted:
         self.names = NameIndex(nocode)
         self.wires = [k for k in (wire_key(t["name"], t["brand"]) for t in nocode if is_wire(t["name"])) if k]
         self.wire_set = {(k["range"], k["size"], k["cores"], k["colour"]) for k in self.wires}
-        self.ranges = {range_key(t["name"], t["brand"]) for t in nocode if is_wire(t["name"])} - {""}
+        rc = collections.Counter(range_key(t["name"], t["brand"]) for t in nocode if is_wire(t["name"]))
+        self.ranges = {r for r in rc if r}
+        self.big_ranges = {r for r, n in rc.items() if r and n >= 3}
+        self.brand_words = {w for w in re.findall(r"[a-z0-9]+", self.brand.lower())}
         self.slug = {(k["range"], _norm(f"{k['size']:g}"), k["colour"]) for k in self.wires}
 
     def page(self, name, strong, url="") -> bool:
@@ -623,8 +627,15 @@ class Wanted:
         path = _wire_text(urlsplit(url).path)
         toks = set(re.findall(r"[a-z0-9]+", path))
         joined = re.sub(r"[^a-z0-9]", "", path)
-        return (any(r in joined and sz in toks and (not c or c in toks) for r, sz, c in self.slug)
-                or any(r in joined for r in self.ranges))
+        words = []
+        for t in re.findall(r"[a-z0-9]+", path):
+            for b in self.brand_words:
+                if t.startswith(b) and len(t) > len(b) + 2:
+                    t = t[len(b):]
+            words.append(t)
+        grams = {"".join(words[i:i + n]) for n in (1, 2, 3) for i in range(len(words) - n + 1)}
+        return (any(r in grams and sz in toks and (not c or c in toks) for r, sz, c in self.slug)
+                or bool(grams & self.big_ranges))
 
 
 def prioritise(urls, targets, all_codes, done, wanted=None):
@@ -754,7 +765,11 @@ def cmd_crawl(a):
             if not urls:
                 s["stopped"] = "no published sitemap with pages"
                 continue
-            done = set(cache)
+            # cached pages of our products whose images were never checked (an older rule did not
+            # want them) are opened again
+            done = {u for u, r in cache.items()
+                    if not (r.get("status", "").startswith("ok") and (r.get("images") or "[]") == "[]"
+                            and wanted.page(r.get("name", ""), r.get("strong", ""), u))}
             for u in prioritise(urls, targets, all_codes, done, wanted):
                 if fetched >= a.max_pages:
                     s["stopped"] = s["stopped"] or "page limit for this run"
@@ -915,16 +930,19 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
             wk = wire_key(t["name"], t["brand"]) if not codes and is_wire(t["name"]) else None
             if not best and wk:  # a wire: the brand's own page for this range, size, cores, colour
                 found = []
-                for pk, p in wire_pages:
-                    if not wire_match(pk, wk):
-                        continue
-                    for im in json.loads(p.get("images") or "[]"):
-                        if len(img_keys[im["url"]]) > 1:
-                            why = "brand wire photo is shared by different sizes or colours"
-                        elif not im.get("ok"):
-                            why = f"brand image failed quality check: {im.get('reason')}"
-                        else:
-                            found.append((im["w"] * im["h"], p, im))
+                for same_length in (True, False):
+                    for pk, p in wire_pages:
+                        if not wire_match(pk, wk, same_length):
+                            continue
+                        for im in json.loads(p.get("images") or "[]"):
+                            if len(img_keys[im["url"]]) > 1:
+                                why = "brand wire photo is shared by different sizes or colours"
+                            elif not im.get("ok"):
+                                why = f"brand image failed quality check: {im.get('reason')}"
+                            else:
+                                found.append((im["w"] * im["h"], p, im))
+                    if found:
+                        break
                 if found:
                     _, p, im = max(found, key=lambda x: x[0])
                     best, how = (p, im, f"wire {wk['range']} {wk['size']:g} sq mm {wk['colour']}".strip()), "wire"

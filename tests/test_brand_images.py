@@ -394,3 +394,24 @@ def test_apply_puts_range_photos_on_only_from_our_padded_copy(tmp_path, monkeypa
     assert not bi.FORBIDDEN & set(sent[0])
     got = {r["sku"]: r["result"] for r in _csv.DictReader(open(plan))}
     assert got == {"K1": "", "K2": "done"}
+
+
+def test_wire_route_falls_back_to_another_coil_length_of_the_same_wire():
+    targets = [_wt("W1", "Polycab Optima+ Wire LF FR 180 Meters / 6 Sqmm / Green")]
+    pages = [dict(_page("https://p/optima-6-green-90", "", w=400, h=400),
+                  name="POLYCABOPTIMA+ | LF-FR | 6 Sq. MM | 90 Meters, Copper | GREEN"),
+             dict(_page("https://p/optima-6-blue-180", "", w=400, h=400),
+                  name="POLYCABOPTIMA+ | LF-FR | 6 Sq. MM | 180 Meters, Copper | BLUE")]
+    row = bi.plan(targets, {"polycab": pages})[0]
+    assert row["action"] == "add" and row["page_url"] == "https://p/optima-6-green-90"
+
+
+def test_url_hit_needs_a_whole_range_name():
+    w = bi.Wanted([_wt("W1", "Polycab Etira house wire 6 sq mm Green 90 m"),
+                   _wt("W2", "Polycab Etira house wire 4 sq mm Green 90 m"),
+                   _wt("W3", "Polycab Etira house wire 2.5 sq mm Green 90 m"),
+                   _wt("W4", "Polycab Multicore 4 sq mm cable")], set())
+    assert w.url_hit("https://polycab.com/etira-house-wires-fr-6-sq-mm-90-meters-copper-green/c-5016/p-54545")
+    assert w.url_hit("https://polycab.com/etira-house-wires/c-5016")                 # the range page
+    assert not w.url_hit("https://polycab.com/polycab-instrumentation-300-mc-st/a-3905/p-54768")
+    assert not w.url_hit("https://polycab.com/multicore-flexible/x")                 # a 1-product range
