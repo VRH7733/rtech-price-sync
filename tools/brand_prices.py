@@ -34,7 +34,11 @@ from rtech_sync.catalogue import load_catalogue  # noqa: E402
 from rtech_sync.config import load_config  # noqa: E402
 from rtech_sync.fetcher import Fetcher  # noqa: E402
 
-HOSTS = {"havells.com": "Havells"}
+HOSTS = {"havells.com": "Havells", "shop.legrand.co.in": "Legrand"}
+LEGRAND_SHOP = "https://shop.legrand.co.in"
+LEGRAND_CATEGORIES = ("switches-accessories", "protection", "connected-switches", "desktop-power-center",
+                      "health-safety")
+MAX_LISTING_PAGES = 60  # per category
 STOP_AFTER = 5
 _AMOUNT = re.compile(r'data-price-amount="([\d.]+)"\s*data-price-type="(\w+)"')
 _SKU = re.compile(r'itemprop="sku">\s*([^<\s]+)\s*<')
@@ -61,12 +65,42 @@ def magento_price(html: str, code: str):
     return mrp, final or mrp
 
 
-def targets(rows, state, plan, known):
+def legrand_listing(html: str) -> dict:
+    """{catalogue number: page URL} from one shop.legrand.co.in category listing page."""
+    out = {}
+    for item in html.split('class="item product product-item"')[1:]:
+        code = re.search(r"/lg-(\d{6})[-_]", item)
+        link = re.search(r'class="product-item-link"\s+href="(https://shop\.legrand\.co\.in/[^"?#]+)"', item)
+        if code and link:
+            out.setdefault(code.group(1), link.group(1))
+    return out
+
+
+def legrand_pages(fetcher, log=print) -> dict:
+    pages = {}
+    for cat in LEGRAND_CATEGORIES:
+        for n in range(1, MAX_LISTING_PAGES + 1):
+            fr = fetcher.get(f"{LEGRAND_SHOP}/{cat}?product_list_limit=36&p={n}", budget_key="shop.legrand.co.in")
+            if fr.status != "ok" or not fr.text:
+                log(f"legrand {cat} p{n}: {fr.status} {fr.http or ''}")
+                break
+            got = legrand_listing(fr.text)
+            new = {c: u for c, u in got.items() if c not in pages}
+            pages.update(new)
+            if not new or not re.search(r'class="action\s+next"', fr.text):
+                break
+        log(f"legrand {cat}: {len(pages)} products so far")
+    return pages
+
+
+def targets(rows, state, plan, known, legrand=None):
     by_sku = {r.sku: r for r in rows if r.publish == "yes"}
     out = []
     for p in plan:
         sku, url, code = p.get("sku", ""), p.get("page_url", ""), p.get("code", "")
         row = by_sku.get(sku)
+        if row and row.brand == "Legrand" and legrand is not None:
+            url = legrand.get(_code(code), "")
         if not row or not url or not code or urlparse(url).netloc not in HOSTS:
             continue
         s = state.get(sku, {})
@@ -90,9 +124,10 @@ def main(argv=None) -> int:
     if out_path.exists():
         known = json.loads(out_path.read_text(encoding="utf-8")).get("items", {})
     today = datetime.now(ZoneInfo(cfg.timezone)).date().isoformat()
-    todo = targets(rows, state, plan, known)
-    print(f"{len(todo)} products to read")
     fetcher = Fetcher(cfg.fetch)
+    legrand = legrand_pages(fetcher)
+    todo = targets(rows, state, plan, known, legrand)
+    print(f"{len(todo)} products to read")
     refused, stopped, n_ok, n_bad = {}, set(), 0, 0
     for sku, url, code in todo:
         host = urlparse(url).netloc
