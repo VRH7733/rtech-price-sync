@@ -1,0 +1,46 @@
+name: brand-prices
+
+# Reads official MRPs from the brands' own shops (havells.com) for products no marketplace prices
+# (owner's option c, 18 Oct 2026) and saves them to the PRIVATE data repo as data/brand_prices.json.
+# The daily run shows them instead of Request a Quote; marketplace prices always win.
+# robots.txt and Crawl-delay obeyed. Weekly, and by hand.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 9 * * 0"  # Sunday 15:00 IST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brand-prices
+  cancel-in-progress: false
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+      - name: Read brand MRPs
+        env:
+          RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+        run: python tools/brand_prices.py pd
+      - name: Commit
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add data/brand_prices.json
+          git diff --cached --quiet && echo "nothing new" || { git commit -qm "brand MRPs $(date -u +%F)"; for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done; }
