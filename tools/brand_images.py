@@ -65,7 +65,7 @@ FORBIDDEN = {"regular_price", "sale_price", "price", "stock_status", "stock_quan
 SKIP_SITEMAP = re.compile(r"blog|news|post|career|investor|media|press|event|author|tag|video|locator|"
                           r"dealer|image|page-sitemap|category|attachment", re.I)
 SKIP_PAGE = re.compile(r"/(blog|blogs|news|careers?|investors?|media|press|events?|about|contact|"
-                       r"store-locator|dealers?|csr|sustainability|tag|author|policy|privacy|terms)(/|$)|"
+                       r"store-locator|dealers?|csr|sustainability|tag|author|policy|privacy|terms|campaigns?|offers?)(/|$)|"
                        r"\.(pdf|jpe?g|png|webp|gif|svg|zip)$", re.I)
 BAD_IMAGE_URL = re.compile(r"logo|placeholder|banner|favicon|sprite|icon|\.svg|\.gif", re.I)
 # 400 px (was 600 until 18 Oct 2026): Polycab's per-SKU wire photos are 400x400 and clean; the owner
