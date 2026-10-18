@@ -1270,13 +1270,15 @@ def cmd_report(a):
                          f"images checked {v['images_checked']}. {v['stopped']}")
     lines += ["", "| Brand | Products | Official image now | Added/replaced this run | No official image |",
               "|---|---|---|---|---|"]
+    ours = {t["sku"]: t.get("has_our_image") for t in targets}
     by = collections.defaultdict(list)
     for r in rows:
         by[r["brand"]].append(r)
     tot = collections.Counter()
     for b, rs in sorted(by.items()):
         added = sum(1 for r in rs if r.get("result", "").startswith("done"))
-        has = sum(1 for r in rs if r.get("result", "").startswith("done") or r["reason"].startswith("already has an official"))
+        has = sum(1 for r in rs if r.get("result", "").startswith("done") or r["reason"].startswith("already has an official")
+                  or ours.get(r["sku"]))
         tot.update(products=len(rs), has=has, added=added)
         lines.append(f"| {b} | {len(rs)} | {has} | {added} | {len(rs) - has} |")
     other = [t for t in targets if not any(t["brand"].lower() in [n.lower() for n in c["names"]] for c in BRANDS.values())]
