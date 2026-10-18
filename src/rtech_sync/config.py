@@ -38,6 +38,8 @@ class PricingCfg:
     default_markup_pct: Decimal = Decimal("0")
     default_gst_pct: Decimal = Decimal("18")
     stale_days: int = 3
+    # a site that refuses us (blocked) keeps its last real price for this many days (0 = off)
+    keep_blocked_days: int = 0
     fetch_for_manual_rows: bool = False
 
 
@@ -126,6 +128,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         default_markup_pct=_dec(p, "default_markup_pct", Decimal("0")),
         default_gst_pct=_dec(p, "default_gst_pct", Decimal("18")),
         stale_days=int(p.get("stale_days", 3)),
+        keep_blocked_days=int(p.get("keep_blocked_days", 0)),
         fetch_for_manual_rows=bool(p.get("fetch_for_manual_rows", False)),
     )
     fetch = FetchCfg(

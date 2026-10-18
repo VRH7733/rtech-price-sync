@@ -16,6 +16,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
@@ -74,6 +75,56 @@ def _fetch_all(tasks: list, fetcher: Fetcher, deadline: float, now: Callable,
         with ThreadPoolExecutor(max_workers=len(by_source)) as ex:
             list(ex.map(worker, list(by_source)))
     return results
+
+
+KEEP_STATUSES = {"blocked", "robots_blocked"}
+
+
+def last_seen(item: dict) -> dict:
+    """source -> (price, date) of the last REAL reading. Older state has only "sources"
+    (the last usable prices), dated by last_ok."""
+    seen = {}
+    ref = item.get("last_ok") or item.get("first_seen")
+    for src, price in (item.get("sources") or {}).items():
+        if ref and price:
+            seen[src] = (price, ref)
+    for src, v in (item.get("seen") or {}).items():
+        seen[src] = (v["price"], v["date"])
+    return seen
+
+
+def keep_blocked_prices(results: list, item: dict, stopped: dict, today: date, max_days: int) -> list:
+    """While a site refuses us (blocked, or not asked because it kept refusing), use its last
+    real price for this product if it is at most max_days old. Changes results in place;
+    returns [(source, date of the kept price)]."""
+    if max_days <= 0:
+        return []
+    seen = last_seen(item)
+    kept = []
+    for i, res in enumerate(results):
+        refused = res.status in KEEP_STATUSES or (res.status == "not_refreshed" and res.source in stopped)
+        if not refused or res.source not in seen:
+            continue
+        price, when = seen[res.source]
+        if (today - date.fromisoformat(when)).days > max_days:
+            continue
+        results[i] = SourceResult(res.source, "ok", price=Decimal(price), url=res.url,
+                                  detail=f"kept: last real price from {when} (site refusing us)")
+        kept.append((res.source, when))
+    return kept
+
+
+def record_seen(state: dict, sku: str, results: list, today: date) -> None:
+    """Remember each source's last REAL price and its date (kept prices keep their old date)."""
+    item = state["items"].setdefault(sku, {})
+    seen = {k: dict(v) for k, v in (item.get("seen") or {}).items()}
+    for src, (price, when) in last_seen(item).items():
+        seen.setdefault(src, {"price": price, "date": when})
+    for res in results:
+        if res.usable and not res.detail.startswith("kept:"):
+            seen[res.source] = {"price": str(res.price), "date": today.isoformat()}
+    if seen:
+        item["seen"] = seen
 
 
 def checked_today(row, ps, today: date, every: int) -> bool:
@@ -154,11 +205,15 @@ def run_sync(
                 SourceResult(s, "error", url=r.urls.get(s, ""), detail="internal: " + internal_error)
                 for s in cfg.sources
             ]
+        kept = keep_blocked_prices(results, state["items"].get(r.sku, {}), stopped, today,
+                                   cfg.pricing.keep_blocked_days)
         # pilot dry run: judge a pending row as if it were approved (nothing is published)
         as_row = dataclasses.replace(r, publish="yes") if include_pending and r.publish == "pending_review" else r
         d = decide(as_row, results, ps, cfg.pricing, today)
         if internal_error:
             d.flags.append("internal_error")
+        for src, seen in kept:
+            d.info.append(f"kept_last:{src}:{seen}")
         rr.items.append({"row": r, "decision": d, "results": results, "live_price": ps.price, "ps": ps})
         if publish and ps.first_seen is None:
             set_item(state, r.sku, first_seen=today.isoformat())
@@ -223,6 +278,7 @@ def run_sync(
             rr.changed.append((r.sku, ps.price, d.price, d.action))
         if not publish:
             continue
+        record_seen(state, r.sku, it["results"], today)  # before "sources" is replaced below
         snapshot = {x.source: str(x.price) for x in it["results"] if x.usable}
         if snapshot:
             set_item(state, r.sku, sources=snapshot)

@@ -358,3 +358,52 @@ def test_rotation_rechecks_held_moves_and_new_products_daily_and_all_products_ov
         assert {"RT-X-000", "RT-X-001"} <= {it["row"].sku for it in rr.items}
     rr = go(c, rows, state, FakeFetcher({}), FakeWoo(), publish=False, all_products=True)
     assert len(rr.items) == 30
+
+
+def _blocked_ib_rows(n=6):
+    rows = [make_row(sku=f"K{i}", wc_product_id=200 + i, wc_variation_id=None,
+                     urls={"industrybuying": f"https://www.industrybuying.com/p-EL.K.{i}",
+                           "moglix": "https://www.moglix.com/p/a"}) for i in range(n)]
+    pg = {r.urls["industrybuying"]: FetchResult(r.urls["industrybuying"], "blocked", 403, detail="HTTP 403")
+          for r in rows}
+    pg.update(pages(1200, None, None))  # Moglix answers at Rs 1,200
+    return rows, pg
+
+
+def test_refusing_site_keeps_its_last_real_price_in_the_cheapest_rule(cfg):
+    c = dataclasses.replace(cfg, pricing=dataclasses.replace(cfg.pricing, keep_blocked_days=30))
+    rows, pg = _blocked_ib_rows()
+    old = (TODAY - timedelta(days=10)).isoformat()
+    state = {"version": 1, "items": {r.sku: {"first_seen": old, "last_ok": old, "price": "1000",
+                                             "sources": {"industrybuying": "1000"}} for r in rows}}
+    rr = go(c, rows, state, FakeFetcher(pg), FakeWoo(), publish=True)
+    for it in rr.items:  # blocked (first 5) and not asked (6th) alike
+        d = it["decision"]
+        assert d.action == "publish" and d.price == D(1000), (it["row"].sku, d)
+        assert f"kept_last:industrybuying:{old}" in d.info
+    st = state["items"]["K5"]
+    assert st["seen"]["industrybuying"] == {"price": "1000", "date": old}  # keeps its real date
+    assert st["seen"]["moglix"]["date"] == TODAY.isoformat()
+
+
+def test_kept_price_expires_after_keep_blocked_days_and_can_be_switched_off(cfg):
+    rows, pg = _blocked_ib_rows(2)
+    old = (TODAY - timedelta(days=31)).isoformat()
+
+    def state():
+        return {"version": 1, "items": {r.sku: {"first_seen": old, "last_ok": old, "price": "1000",
+                                                "sources": {"industrybuying": "1000"}} for r in rows}}
+    c30 = dataclasses.replace(cfg, pricing=dataclasses.replace(cfg.pricing, keep_blocked_days=30))
+    rr = go(c30, rows, state(), FakeFetcher(pg), FakeWoo(), publish=False)
+    assert all(it["decision"].price == D(1200) for it in rr.items)  # too old: Moglix only
+    c0 = dataclasses.replace(cfg, pricing=dataclasses.replace(cfg.pricing, keep_blocked_days=0))
+    fresh = (TODAY - timedelta(days=1)).isoformat()
+    st = state()
+    for v in st["items"].values():
+        v["last_ok"] = fresh
+    rr = go(c0, rows, st, FakeFetcher(pg), FakeWoo(), publish=False)
+    assert all(it["decision"].price == D(1200) for it in rr.items)  # off: Moglix only
+
+
+def test_live_config_keeps_blocked_prices_30_days():
+    assert live_cfg().pricing.keep_blocked_days == 30

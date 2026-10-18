@@ -47,6 +47,10 @@ pricing:
   default_gst_pct: 18
   stale_days: 6                    # no validated price for this many days => hide price (two
                                    # missed 3-day checks in a row; one miss keeps the price)
+  # 18 Oct 2026 (IndustryBuying refuses us since 16 Oct; recommended to the owner): while a site refuses us, its LAST
+  # real price for a product stays in the comparison for up to this many days (it is never
+  # re-read from anywhere else). The cheapest rule and all guards still apply.
+  keep_blocked_days: 30
   fetch_for_manual_rows: true      # STOP 2: manual_price rows are fetched so you are told when a
                                    # marketplace goes below your price (market_below_manual)
 
