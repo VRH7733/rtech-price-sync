@@ -231,10 +231,10 @@ def test_plan_name_route_is_separate_and_most_specific_wins():
     targets = [_t("W1", "Havells Life Line Plus S3 HRFR 1.5 Sq.mm 1 Core Cable Red (90 m)"),
                _t("W2", "Havells Life Line Plus S3 HRFR 2.5 Sq.mm 1 Core Cable Blue (90 m)", image="https://shop/x.jpg")]
     pages = [dict(_page("https://h/lifeline", "Life Line"), name="Life Line Cable"),
-             dict(_page("https://h/lifeline-plus", "Life Line Plus"), name="Life Line Plus S3 HRFR Cable")]
+             dict(_page("https://h/lifeline-plus-red", "Life Line Plus"), name="Life Line Plus S3 HRFR Cable")]
     rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
-    assert rows["W1"]["action"] == "add-name" and rows["W1"]["page_url"] == "https://h/lifeline-plus"
-    assert rows["W2"]["action"] == "none" and "never replace a good image" in rows["W2"]["reason"]
+    assert rows["W1"]["action"] == "add-name" and rows["W1"]["page_url"] == "https://h/lifeline-plus-red"
+    assert rows["W2"]["action"] == "none"  # has an image, and the page shows another colour
 
 
 def test_legrand_catalogue_photo_by_number(tmp_path, monkeypatch):
@@ -415,3 +415,17 @@ def test_url_hit_needs_a_whole_range_name():
     assert w.url_hit("https://polycab.com/etira-house-wires/c-5016")                 # the range page
     assert not w.url_hit("https://polycab.com/polycab-instrumentation-300-mc-st/a-3905/p-54768")
     assert not w.url_hit("https://polycab.com/multicore-flexible/x")                 # a 1-product range
+
+
+def test_name_route_never_shows_another_colour():
+    assert bi.colour_ok("Havells Supernova 36 W Glamtube 3000 K Warm White", "Supernova Glamtube /lhewajpgpv1a036-c.html")
+    assert not bi.colour_ok("Havells Fusion ES Pearl Ivory 1400 mm Ceiling Fan", "Fusion ES /fusion-es-1400-mm.html")
+    assert bi.colour_ok("Havells Fusion ES Pearl Ivory 1400 mm Ceiling Fan", "Fusion ES /fusion-es-1400mm-pearl-ivory.html")
+    targets = [_t("F1", "Havells Fusion ES Pearl Ivory 1400 mm Ceiling Fan"),
+               _t("F2", "Havells Fusion ES Silver Blue 1400 mm Ceiling Fan")]
+    pages = [dict(_page("https://h/fusion-es-pearl-ivory.html", "x"), name="Fusion ES"),
+             dict(_page("https://h/fusion-es-brown.html", "x"), name="Fusion ES")]
+    rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
+    assert rows["F1"]["action"] == "add-name" and rows["F1"]["page_url"].endswith("pearl-ivory.html")
+    assert rows["F2"]["action"] == "none" and "another colour" in rows["F2"]["reason"]
+    assert not bi.colour_ok("Havells Andria ES Quartz 1200 mm Ceiling Fan", "Andria ES /fhcad2sebr48-c.html")

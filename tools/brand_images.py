@@ -225,6 +225,36 @@ def is_wire(title: str) -> bool:
     return bool(re.search(r"(\d)\s*(sq\.?\s*mm|sqmm|mm2|mm\u00b2)|\b(wire|wires|cable)\b", title.lower()))
 
 
+BODY_COLOURS = {"pink", "red", "green", "blue", "brown", "black", "grey", "gray", "gold", "golden", "silver", "ivory",
+                "pearl", "wood", "wooden", "walnut", "copper", "maroon", "espresso", "nickel", "nicke", "mist", "dusk",
+                "matt", "matte", "bronze", "beige", "orange", "yellow", "purple", "violet", "white", "teak", "rosewood",
+                "champagne", "smoke", "sand", "cream", "slate", "chrome", "metallic", "rust", "titanium", "aqua"}
+FAN_GENERIC = {"havells", "crabtree", "ceiling", "fan", "fans", "with", "remote", "control", "bldc", "sweep", "and",
+               "the", "for", "blades", "blade", "speed", "high", "energy", "saving", "star", "rated", "decorative",
+               "premium", "underlight", "led", "light", "motor", "copper", "pack"}
+LIGHT_COLOUR = re.compile(r"\b(cool|warm|natural|neutral|netural|day)\s*(white|daylight|day\s*light)\b|daylight|"
+                          r"white\s+light|\bcdl\b|\bww\b|\bnw\b")
+
+
+def colour_ok(title: str, page_text: str) -> bool:
+    """A product-name match shows the right thing only if every body colour or finish in our title
+    (Brown, Pearl White, Wood Mist...) is on the brand page too. Light colours of lamps (Cool White,
+    Warm White, Daylight) do not change how the product looks and are ignored."""
+    words = set(re.findall(r"[a-z]+", LIGHT_COLOUR.sub(" ", title.lower())))
+    theirs = set(re.findall(r"[a-z]+", page_text.lower().replace("-", " ")))
+    if not (words & BODY_COLOURS) <= theirs:
+        return False
+    caps = set(re.findall(r"\b(b22|e27|e14|gu10|gu5)\b", title.lower()))  # lamp bases look different
+    if not caps <= set(re.findall(r"[a-z0-9]+", page_text.lower())):
+        return False
+    if {"fan", "fans"} & words:
+        # fan finishes have names of their own (Quartz, Bianco, Flora Sapphire): every descriptive
+        # word of our title must be on the brand page
+        extra = {w for w in words - theirs if len(w) > 2} - FAN_GENERIC
+        return not extra
+    return True
+
+
 class NameIndex:
     """name_match against many titles at once: words -> titles that contain them all."""
 
@@ -965,6 +995,10 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                             if im.get("ok") and img_pages[im["url"]] < SHARED_IMAGE_PAGES]
                     if good:
                         scored.append((sc, max(good, key=lambda i: i["w"] * i["h"]), p))
+                right = [x for x in scored if colour_ok(t["name"], x[2].get("name", "") + " " + x[2]["url"])]
+                if scored and not right:
+                    why += "; the brand photo may show another colour"
+                scored = right
                 if scored:
                     top = max(x[0] for x in scored)
                     tops = [x for x in scored if x[0] == top]
