@@ -14,6 +14,12 @@ permissions:
 
 jobs:
   test:
+    # rankmath-schema: Rank Math prints the Product (its defaults).
+    # woocommerce-schema: Rank Math's schema modules off, WooCommerce prints it (as on the live shop).
+    strategy:
+      fail-fast: false
+      matrix:
+        schema: [rankmath-schema, woocommerce-schema]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -43,7 +49,9 @@ jobs:
           # Rank Math prints nothing on the front end until its setup wizard has run once
           wp option update rank_math_wizard_completed 1
           wp option update rank_math_registration_skip 1
-          wp option list --search='rank*' --fields=option_name | head -40
+          if [ "${{ matrix.schema }}" = "woocommerce-schema" ]; then
+            wp eval '$m = array_values( array_diff( (array) get_option( "rank_math_modules" ), array( "rich-snippet", "woocommerce" ) ) ); update_option( "rank_math_modules", $m ); echo implode( ",", $m ), "\n";'
+          fi
           wp plugin list --fields=name,version,status
           mkdir -p wp-content/mu-plugins
           cp ../wordpress/tests/strip_quote_schema.php wp-content/mu-plugins/
@@ -71,9 +79,11 @@ jobs:
         run: tail -50 site/wp-content/debug.log || true
 
       - name: Build the plugin zip
+        if: matrix.schema == 'woocommerce-schema'
         run: cd wordpress && zip -qr ../rtech-ai-seo.zip rtech-ai-seo
 
       - uses: actions/upload-artifact@v4
+        if: matrix.schema == 'woocommerce-schema'
         with:
           name: rtech-ai-seo
           path: rtech-ai-seo.zip

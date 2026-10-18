@@ -165,6 +165,13 @@ function rtech_ai_filter_title( $title ) {
 add_filter( 'rank_math/frontend/title', 'rtech_ai_filter_title', 20 );
 add_filter( 'rank_math/opengraph/facebook/og_title', 'rtech_ai_filter_title', 20 );
 add_filter( 'rank_math/opengraph/twitter/twitter_title', 'rtech_ai_filter_title', 20 );
+add_filter(
+	'rank_math/opengraph/facebook/og_site_name',
+	function () {
+		return rtech_ai_settings()['brand_name'];
+	},
+	20
+);
 
 /** A share image for pages that have none: the product photo if any, else the site logo. */
 function rtech_ai_fallback_image_id() {
@@ -195,6 +202,9 @@ add_filter(
 	'rank_math/json_ld',
 	function ( $data ) {
 		$s = rtech_ai_settings();
+		if ( isset( $data['WebSite'] ) && is_array( $data['WebSite'] ) ) {
+			$data['WebSite']['name'] = $s['brand_name'];
+		}
 		if ( isset( $data['publisher'] ) && is_array( $data['publisher'] ) ) {
 			$old = isset( $data['publisher']['name'] ) ? $data['publisher']['name'] : '';
 			$data['publisher']['name'] = $s['brand_name'];
@@ -265,6 +275,27 @@ add_filter(
 	},
 	99,
 	2
+);
+
+/** The same for the Product that Rank Math prints when its WooCommerce schema is switched on. */
+add_filter(
+	'rank_math/snippet/rich_snippet_product_entity',
+	function ( $entity ) {
+		$product = rtech_ai_current_product();
+		if ( ! $product || ! is_array( $entity ) ) {
+			return $entity;
+		}
+		if ( isset( $entity['offers'] ) && is_array( $entity['offers'] ) && isset( $entity['offers']['@type'] ) ) {
+			$entity['offers'] = array( $entity['offers'] ); // one offer object -> list, as WooCommerce writes it
+			$entity = rtech_ai_product_markup( $entity, $product );
+			$entity['offers'] = $entity['offers'][0];
+		} else {
+			$entity = rtech_ai_product_markup( $entity, $product );
+		}
+		$GLOBALS['rtech_ai_product_seen'] = true;
+		return $entity;
+	},
+	99
 );
 
 /** Breadcrumbs: "Wires &amp;amp; Cables" -> "Wires and Cables". */

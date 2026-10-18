@@ -37,6 +37,10 @@ def check(cond, msg):
         fails.append(msg)
 
 
+site = [n for n in ld(get("/")[2]) if n.get("@type") == "WebSite"]
+if site:
+    check(site[0].get("name") == "RTechElectricals", f"home: WebSite name ({site[0].get('name')})")
+
 for slug, priced in (("priced-cable", True), ("quote-switch", False)):
     s, _, page = get(f"/product/{slug}/")
     check(s == 200, f"{slug}: HTTP 200")
@@ -47,12 +51,14 @@ for slug, priced in (("priced-cable", True), ("quote-switch", False)):
         p = prods[0]
         print("     Product:", json.dumps(p, ensure_ascii=False)[:700])
         check(p.get("brand", {}).get("name") == "Havells", f"{slug}: brand Havells")
+        check(p.get("name", "").startswith("Havells") and "rtechelectricals" not in p.get("name", "").lower(), f"{slug}: product name without the shop name")
         check("HavellsSize" not in p.get("description", "") and "Brand:" not in p.get("description", ""),
               f"{slug}: clean description")
         check(bool(p.get("category")), f"{slug}: category set")
         check("&" not in p.get("category", "") and " and " in p.get("category", ""), f"{slug}: category reads 'and', no &amp;")
         if priced:
-            o = p.get("offers", [{}])[0]
+            o = p.get("offers", [{}])
+            o = o[0] if isinstance(o, list) else o
             check(o.get("itemCondition", "").endswith("NewCondition"), f"{slug}: itemCondition")
             check(o.get("seller", {}).get("name") == "RTechElectricals", f"{slug}: seller name")
         else:
