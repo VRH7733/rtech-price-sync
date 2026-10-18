@@ -151,7 +151,7 @@ WIRE_COLOURS = COLOURS - {"silver", "gold"}
 def _wire_text(s: str) -> str:
     s = s.lower().replace("\u2013", " ").replace("\u2014", " ").replace("\u00b2", "2")
     s = re.sub(r"\b(wires?)\s*\+", r"\1 plus ", s)
-    s = re.sub(r"([a-z])\+", r"\1plus ", s)
+    s = re.sub(r"([a-z])\+(?![a-z])", r"\1plus ", s)  # Maxima+ -> maximaplus; HR+FR stays two words
     return s
 
 

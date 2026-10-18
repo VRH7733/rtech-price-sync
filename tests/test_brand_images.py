@@ -313,6 +313,7 @@ def test_wire_key_reads_range_size_colour_and_length():
     blue = bi.wire_key("POLYCABMAXIMA+ Green Wire | 6 Sq. MM | 180 Meters | BLUE", "Polycab")
     assert not bi.wire_match(blue, k)                     # other colour
     assert bi.range_key("HomeCab–FR", "KEI") == bi.range_key("KEI Homecab 2.5 Sq.mm 1 Core FR Cable", "KEI") == "homecab"
+    assert bi.range_key("Flamex HR+FR", "RR Kabel") == bi.range_key("RR Kabel Flamex HRFR 1.5 Sq.mm 1 Core", "RR Kabel") == "flamex"
     assert bi.range_key("SUPEREX GREEN HR + FR", "RR Kabel") != bi.range_key("RR Kabel Superex FR 1.5 Sq.mm", "RR Kabel")
 
 
