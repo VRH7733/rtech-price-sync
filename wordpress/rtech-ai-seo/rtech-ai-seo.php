@@ -24,7 +24,7 @@ function rtech_ai_settings() {
 		'brand_name' => 'RTechElectricals',
 		'trade_name' => 'RAMTECH AUTOMATION',
 		'city'       => 'Bengaluru',
-		'email'      => '',
+		'email'      => 'info@ramtechautomation.co.in',
 		'phone'      => '',
 		'about'      => 'RTechElectricals is an authorised dealer of electrical products in Bengaluru, Karnataka, India: wires and cables, modular switches, MCBs and switchgear, lighting, fans and pumps from Havells, Legrand, Polycab, KEI, RR Kabel, Finolex, GM and other brands. Prices shown on the site include GST. Products without a listed price can be quoted on request.',
 		'home_desc'  => 'Authorised dealer in Bengaluru for Havells, Legrand, Polycab, KEI, RR Kabel and Finolex. 5,000+ wires, cables, switches, MCBs and lights. GST prices, order online.',
