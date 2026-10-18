@@ -102,6 +102,11 @@ def describe(page):
         "twitter:card": meta(page, "name", "twitter:card"),
         "h1": [re.sub(r"<[^>]+>", "", h).strip()[:120] for h in h1][:3],
         "generator": gens,
+        "site verification": {n: meta(page, "name", n) for n in (
+            "google-site-verification", "msvalidate.01", "yandex-verification", "p:domain_verify",
+            "facebook-domain-verification") if meta(page, "name", n)},
+        "analytics tags": [m for m in ("googletagmanager.com", "gtag(", "google-analytics.com", "clarity.ms",
+                                       "site-kit") if m in page],
         "markers in html": markers,
         "json-ld types": ld_types(blocks),
         "_blocks": blocks,
