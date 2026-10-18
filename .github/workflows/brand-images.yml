@@ -24,6 +24,10 @@ on:
         description: "also apply product-name matches (weaker than model number)"
         type: boolean
         default: false
+      allow_range:
+        description: "wires with no own photo get the brand's photo of their range, padded to a square"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -114,9 +118,13 @@ jobs:
     concurrency:
       group: shop-writes
       cancel-in-progress: false
+    permissions:
+      contents: write   # the padded range photos are published as release assets
+      actions: read
     env:
       PYTHONPATH: src
       GH_TOKEN: ${{ github.token }}
+      RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -143,6 +151,17 @@ jobs:
         run: |
           python tools/brand_images.py plan --targets pd/brand-images/targets.csv --pages-dir pd/brand-images \
             --out pd/brand-images/plan.csv --check-current
+      - name: Range photos padded to a square (published as release assets)
+        if: github.event.inputs.apply == 'true' && github.event.inputs.allow_range == 'true'
+        run: |
+          python tools/brand_images.py pad --plan pd/brand-images/plan.csv --out-dir padded \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/brand-range-images"
+          if ls padded/*.jpg >/dev/null 2>&1; then
+            gh release view brand-range-images -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+              gh release create brand-range-images -R "$GITHUB_REPOSITORY" --title "Brand range photos (padded)" \
+                --notes "Official brand range photos, padded to a white square for the shop. Source per product in _rte_image_source."
+            gh release upload brand-range-images padded/*.jpg -R "$GITHUB_REPOSITORY" --clobber
+          fi
       - name: Do not overlap the price run (both write to the shop)
         if: github.event.inputs.apply == 'true'
         run: |
@@ -158,8 +177,10 @@ jobs:
           WC_KEY: ${{ secrets.WC_KEY }}
           WC_SECRET: ${{ secrets.WC_SECRET }}
           ALLOW_NAME: ${{ github.event.inputs.allow_name }}
+          ALLOW_RANGE: ${{ github.event.inputs.allow_range }}
         run: |
           EXTRA=""; if [ "$ALLOW_NAME" = "true" ]; then EXTRA="--allow-name"; fi
+          if [ "$ALLOW_RANGE" = "true" ]; then EXTRA="$EXTRA --allow-range"; fi
           python tools/brand_images.py apply --plan pd/brand-images/plan.csv --limit ${{ github.event.inputs.limit }} $EXTRA
       - name: Report
         if: always()

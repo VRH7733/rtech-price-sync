@@ -68,7 +68,12 @@ SKIP_PAGE = re.compile(r"/(blog|blogs|news|careers?|investors?|media|press|event
                        r"store-locator|dealers?|csr|sustainability|tag|author|policy|privacy|terms)(/|$)|"
                        r"\.(pdf|jpe?g|png|webp|gif|svg|zip)$", re.I)
 BAD_IMAGE_URL = re.compile(r"logo|placeholder|banner|favicon|sprite|icon|\.svg|\.gif", re.I)
-MIN_SIDE, MAX_RATIO, MIN_PLAIN_BORDER, BIGGER = 600, 1.6, 0.85, 1.5
+# 400 px (was 600 until 18 Oct 2026): Polycab's per-SKU wire photos are 400x400 and clean; the owner
+# wants a photo on every product rather than none, and the shop gallery shows about 600 px.
+MIN_SIDE, MAX_RATIO, MIN_PLAIN_BORDER, BIGGER = 400, 1.6, 0.85, 1.5
+# range photos (one official photo of a wire range, shared by its sizes): often a wide 530x300 picture,
+# shown padded to a white square, never cropped
+RANGE_MIN_LONG, RANGE_MAX_RATIO = 400, 2.6
 SHARED_IMAGE_PAGES = 4
 PAGE_FIELDS = ["url", "status", "strong", "images", "fetched", "name"]
 NAME_STOP = {"buy", "online", "india", "price", "best", "the", "and", "with", "for", "of", "in", "by", "a", "an",
@@ -130,6 +135,119 @@ def name_match(page_name: str, title: str, brand: str) -> int:
     if any(w in COLOURS and w not in ours for w in words):
         return 0
     return len(words)
+
+
+# ---------------------------------------------------------------- wires and cables (no model numbers)
+WIRE_VARIANT = {"fr", "frls", "frlsh", "lsh", "ls", "hr", "hrfr", "lf", "frlf", "lffr", "zhfr", "hffr", "flame",
+                "retardant", "low", "smoke", "halogen", "free", "zero", "heat", "resistant", "lead", "s3", "pvc",
+                "xlpe", "e", "ii", "grade"}
+WIRE_GENERIC = {"house", "wire", "wires", "cable", "cables", "copper", "insulated", "industrial", "flexible",
+                "multistrand", "single", "multi", "core", "electrical", "domestic", "for", "and", "color", "colour",
+                "length", "sq", "mm", "sqmm", "meters", "meter", "mtr", "mtrs", "m", "with", "new", "coil", "the",
+                "power", "building", "type", "conductor", "unsheathed"}
+WIRE_COLOURS = COLOURS - {"silver", "gold"}
+
+
+def _wire_text(s: str) -> str:
+    s = s.lower().replace("\u2013", " ").replace("\u2014", " ").replace("\u00b2", "2")
+    s = re.sub(r"\b(wires?)\s*\+", r"\1 plus ", s)
+    s = re.sub(r"([a-z])\+", r"\1plus ", s)
+    return s
+
+
+def _wire_range(head: str, brand_words: set) -> str:
+    toks = re.findall(r"[a-z0-9]+", head)
+    out = []
+    for t in toks:
+        for b in brand_words:  # POLYCABOPTIMA+ -> optimaplus
+            if t.startswith(b) and len(t) > len(b) + 2:
+                t = t[len(b):]
+        if t in brand_words or t in WIRE_GENERIC or t in WIRE_VARIANT:
+            continue
+        out.append(t)
+    return "".join(out)
+
+
+def wire_key(text: str, brand: str) -> dict | None:
+    """Range, size (sq mm), cores, colour, length (m) and FR-type words of a wire or cable name, e.g.
+    'Polycab Primma house wire 6 sq mm Blue 90 m' or the brand page 'POLYCABPRIMMA | LF-FR | 6 Sq. MM |
+    90 Meters, Copper | Blue'. None when it has no size or no range name (a generic '185 Sq.mm cable')."""
+    s = _wire_text(text)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:sq\.?\s*mm\b|sqmm|sq\.?\s*m\.?m\.?|mm2|sq\b)", s)
+    if not m:
+        return None
+    brand_words = {w for w in re.findall(r"[a-z0-9]+", brand.lower())} | {"".join(re.findall(r"[a-z0-9]+", brand.lower()))}
+    first_num = re.search(r"\d", s)
+    head = s[:first_num.start()] if first_num else s
+    if "|" in head:
+        head = head.split("|")[0]
+    rng = _wire_range(head, brand_words)
+    if not rng or len(rng) < 3:
+        return None
+    tail = s[first_num.start():] if first_num else ""
+    colours = [w for w in re.findall(r"[a-z]+", tail) if w in WIRE_COLOURS]
+    cores = re.search(r"(\d+(?:\.\d+)?)\s*core", s)
+    length = re.search(r"(\d+)\s*(?:m\b|meters?\b|mtrs?\b|metres?\b)", s)
+    variant = {w for w in re.findall(r"[a-z0-9]+", s) if w in {"fr", "frls", "frlsh", "lsh", "hrfr", "zhfr", "hffr", "lf"}}
+    return {"range": rng, "size": float(m.group(1)), "cores": float(cores.group(1)) if cores else 1.0,
+            "colour": colours[-1] if colours else "", "length": int(length.group(1)) if length else 0,
+            "variant": variant}
+
+
+def wire_match(page: dict, ours: dict) -> bool:
+    """Same range, size, cores and colour; same length when both say it; FR-type words agree when the
+    brand page names them (the range name already implies them when it does not)."""
+    if not page or not ours:
+        return False
+    if (page["range"], page["size"], page["cores"], page["colour"]) != (ours["range"], ours["size"], ours["cores"],
+                                                                        ours["colour"]):
+        return False
+    if page["length"] and ours["length"] and page["length"] != ours["length"]:
+        return False
+    if page["variant"] and ours["variant"] and not (page["variant"] <= ours["variant"] or ours["variant"] <= page["variant"]):
+        return False
+    return True
+
+
+def range_key(text: str, brand: str) -> str:
+    """The range name of a brand's range page ('HomeCab-FR', 'Unilay HR FR') or of our title
+    ('KEI Homecab 2.5 Sq.mm 1 Core FR ...' -> 'homecab'); '' when there is none."""
+    s = _wire_text(text).split("|")[0]
+    first_num = re.search(r"\d", s)
+    head = s[:first_num.start()] if first_num else s
+    brand_words = {w for w in re.findall(r"[a-z0-9]+", brand.lower())} | {"".join(re.findall(r"[a-z0-9]+", brand.lower()))}
+    r = _wire_range(head, brand_words)
+    return r if len(r) >= 4 else ""
+
+
+def is_wire(title: str) -> bool:
+    return bool(re.search(r"(\d)\s*(sq\.?\s*mm|sqmm|mm2|mm\u00b2)|\b(wire|wires|cable)\b", title.lower()))
+
+
+class NameIndex:
+    """name_match against many titles at once: words -> titles that contain them all."""
+
+    def __init__(self, targets):
+        self.targets = targets
+        self.post = collections.defaultdict(set)
+        self.words = []
+        for i, t in enumerate(targets):
+            w = set(_name_words(t["name"]))
+            self.words.append(w)
+            for x in w:
+                self.post[x].add(i)
+
+    def matches(self, page_name: str, brand: str) -> list:
+        if not page_name:
+            return []
+        pn = page_name.split("|")[0].split(" - ")[0]
+        bw = set(_name_words(brand))
+        words = [w for w in _name_words(pn) if w not in bw]
+        if len(words) < 2:
+            return []
+        cand = set.intersection(*(self.post.get(w, set()) for w in set(words)))
+        return [(self.targets[i], len(words)) for i in sorted(cand)
+                if not any(w in COLOURS and w not in self.words[i] for w in words)]
 
 
 # ---------------------------------------------------------------- page parsing
@@ -249,6 +367,46 @@ def assess(data: bytes) -> dict:
     return res
 
 
+def pad_square(data: bytes, margin: float = 0.06) -> bytes:
+    """The picture centred on a white square (nothing cut off), as JPEG."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        im = Image.alpha_composite(bg, im)
+    im = im.convert("RGB")
+    side = int(max(im.size) * (1 + 2 * margin))
+    sq = Image.new("RGB", (side, side), (255, 255, 255))
+    sq.paste(im, ((side - im.width) // 2, (side - im.height) // 2))
+    buf = io.BytesIO()
+    sq.save(buf, "JPEG", quality=92)
+    return buf.getvalue()
+
+
+def assess_range(data: bytes) -> dict:
+    """Quality check of a range photo as it will be shown: padded to a white square. The original
+    must be at least RANGE_MIN_LONG px on its long side and not a very wide banner, and the padded
+    picture must pass the normal check (plain background, product not cut off, not tiny)."""
+    q = assess(data)
+    if not q["w"]:
+        return {"range_ok": False, "range_reason": q["reason"]}
+    w, h = q["w"], q["h"]
+    if max(w, h) < RANGE_MIN_LONG:
+        return {"range_ok": False, "range_reason": f"too small ({w}x{h})"}
+    if max(w, h) / min(w, h) > RANGE_MAX_RATIO:
+        return {"range_ok": False, "range_reason": f"banner shape ({w}x{h})"}
+    pq = assess(pad_square(data))
+    return {"range_ok": pq["ok"], "range_reason": pq["reason"]}
+
+
+def _assess_both(data: bytes) -> dict:
+    q = assess(data)
+    q.update(assess_range(data) if q["w"] else {"range_ok": False, "range_reason": q["reason"]})
+    return q
+
+
 # ---------------------------------------------------------------- shop
 def _brand_of(p: dict) -> str:
     names = [b.get("name", "") for b in p.get("brands") or []]
@@ -354,8 +512,15 @@ def sitemap_images(xml_bytes: bytes) -> dict:
 
 
 def original_image(url: str) -> str:
-    """Magento serves resized copies under /cache/<hash>/; the same file without it is the original."""
-    return re.sub(r"/cache/[0-9a-f]{32}/", "/", url)
+    """Magento serves resized copies under /cache/<hash>/; the same file without it is the original.
+    Image servers that resize on request ('...jpg?format=webp&width=400') give the uploaded file
+    without the query."""
+    url = re.sub(r"/cache/[0-9a-f]{32}/", "/", url)
+    parts = urlsplit(url)
+    if parts.query and all(k.split("=")[0].lower() in ("format", "width", "height", "w", "h", "quality", "mode",
+                                                      "rmode", "rnd", "v") for k in parts.query.split("&")):
+        url = url.split("?")[0]
+    return url
 
 
 def resolve_site(fetcher, site, log):
@@ -430,7 +595,39 @@ def _vocab(targets) -> collections.Counter:
     return c
 
 
-def prioritise(urls, targets, all_codes, done):
+class Wanted:
+    """Which brand pages can give one of our products a photo: a model number, a product-name match,
+    a wire with the same range/size/colour, or a wire range page of one of our ranges."""
+
+    def __init__(self, targets, all_codes):
+        self.all_codes = all_codes
+        self.brand = targets[0]["brand"] if targets else ""
+        nocode = [t for t in targets if not codes_for(t["name"])]
+        self.names = NameIndex(nocode)
+        self.wires = [k for k in (wire_key(t["name"], t["brand"]) for t in nocode if is_wire(t["name"])) if k]
+        self.wire_set = {(k["range"], k["size"], k["cores"], k["colour"]) for k in self.wires}
+        self.ranges = {range_key(t["name"], t["brand"]) for t in nocode if is_wire(t["name"])} - {""}
+        self.slug = {(k["range"], _norm(f"{k['size']:g}"), k["colour"]) for k in self.wires}
+
+    def page(self, name, strong, url="") -> bool:
+        if page_codes(strong or "", self.all_codes) or page_codes(url, self.all_codes):
+            return True
+        if self.names.matches(name, self.brand):
+            return True
+        k = wire_key(name or "", self.brand)
+        if k and (k["range"], k["size"], k["cores"], k["colour"]) in self.wire_set:
+            return True
+        return bool(name) and not k and range_key(name, self.brand) in self.ranges
+
+    def url_hit(self, url) -> bool:
+        path = _wire_text(urlsplit(url).path)
+        toks = set(re.findall(r"[a-z0-9]+", path))
+        joined = re.sub(r"[^a-z0-9]", "", path)
+        return (any(r in joined and sz in toks and (not c or c in toks) for r, sz, c in self.slug)
+                or any(r in joined for r in self.ranges))
+
+
+def prioritise(urls, targets, all_codes, done, wanted=None):
     vocab, brand_words = _vocab(targets), set()
     for t in targets:
         brand_words |= {w.lower() for w in t["brand"].split()}
@@ -438,7 +635,7 @@ def prioritise(urls, targets, all_codes, done):
     for u in urls:
         if u in done or SKIP_PAGE.search(urlsplit(u).path):
             continue
-        if page_codes(u, all_codes):
+        if page_codes(u, all_codes) or (wanted and wanted.url_hit(u)):
             first.append(u)
             continue
         words = set(re.findall(r"[a-z]{4,}", urlsplit(u).path.lower())) - brand_words
@@ -506,6 +703,48 @@ def cmd_crawl(a):
         except Refused as e:
             s["stopped"] = f"STOPPED for this run: {e}"
             log(f"STOP {pim}: {e}")
+    wanted = Wanted(targets, all_codes)
+    # cached images that failed only a rule that has since changed (600 -> 400 px, range photos):
+    # check the image again without opening the page again
+    try:
+        for u, r in list(out_rows.items()):
+            ims = json.loads(r.get("images") or "[]")
+            if not ims or any(i.get("ok") for i in ims) or all("range_ok" in i for i in ims):
+                continue
+            if not wanted.page(r.get("name", ""), r.get("strong", ""), u):
+                continue
+            if fetched >= a.max_pages:
+                break
+            again = []
+            for im in ims:
+                if not im.get("w"):
+                    again.append(im)
+                    continue
+                best = None
+                for img in dict.fromkeys([original_image(im["url"]), im["url"]]):
+                    ir = fetcher.get(img)
+                    fetched += 1
+                    try:
+                        _check(ir, img)
+                    except Refused:
+                        if bare_host(urlsplit(img).netloc) == bare_host(urlsplit(u).netloc):
+                            raise
+                        ir.status = "error"
+                    if ir.status != "ok":
+                        continue
+                    q = dict(_assess_both(ir.content), url=img)
+                    if not best or (q["ok"], q["range_ok"], q["w"] * q["h"]) > (best["ok"], best["range_ok"], best["w"] * best["h"]):
+                        best = q
+                    if q["ok"]:
+                        break
+                again.append(best or dict(im, range_ok=False, range_reason=im.get("reason", "")))
+            r["images"] = json.dumps(again)
+            if fetched % 50 == 0:
+                log(f"  {fetched} cached images checked again")
+                _save_pages(a.out, out_rows)
+    except Refused as e:
+        summary["recheck_stopped"] = str(e)
+        log(f"STOP recheck: {e}")
     for site in BRANDS[key]["sites"]:
         s = summary["sites"][site] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
                                       "images_checked": 0, "stopped": ""}
@@ -515,15 +754,17 @@ def cmd_crawl(a):
             if not urls:
                 s["stopped"] = "no published sitemap with pages"
                 continue
-            done = {u for u, r in cache.items() if any(i.get("ok") for i in json.loads(r.get("images") or "[]"))
-                    or not page_codes(u, all_codes) or u not in simg}
-            for u in prioritise(urls, targets, all_codes, done):
+            done = set(cache)
+            for u in prioritise(urls, targets, all_codes, done, wanted):
                 if fetched >= a.max_pages:
                     s["stopped"] = s["stopped"] or "page limit for this run"
                     break
                 codes_here = page_codes(u, all_codes)
-                sm_imgs = [i for i in simg.get(u, ([], ""))[0] if any(c in _norm(i) for c in codes_here)]
-                if codes_here and sm_imgs:
+                sm = simg.get(u, ([], ""))
+                sm_imgs = [i for i in sm[0] if any(c in _norm(i) for c in codes_here)]
+                if not sm_imgs and sm[0] and not codes_here and wanted.page(sm[1], "", u):
+                    sm_imgs = sm[0][:1]  # matched by the product name in the image sitemap
+                if sm_imgs:
                     # the sitemap already names this page's product photo: fetch only the photo
                     checked = []
                     for img in dict.fromkeys([original_image(sm_imgs[0]), sm_imgs[0]]):
@@ -531,19 +772,22 @@ def cmd_crawl(a):
                         fetched += 1
                         _check(ir, img)
                         s["images_checked"] += 1
-                        q = assess(ir.content) if ir.status == "ok" else {
-                            "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False}
+                        q = _assess_both(ir.content) if ir.status == "ok" else {
+                            "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False,
+                            "range_ok": False, "range_reason": ""}
                         checked.append(dict(q, url=img))
                         if q["ok"]:
                             break
                     s["matched"] += 1
-                    title = simg[u][1]
+                    title = sm[1]
                     out_rows[u] = {"url": u, "status": "sitemap", "fetched": time.strftime("%Y-%m-%d"),
                                    "strong": urlsplit(u).path.replace("-", " ").replace("/", " ") + " | " + title,
                                    "images": json.dumps(checked), "name": title}
                     if fetched % 50 == 0:
                         _save_pages(a.out, out_rows)
                     continue
+                if simg and u in simg and not codes_here:
+                    continue  # an image-sitemap page that matches none of our products: not opened
                 fr = fetcher.get(u)
                 fetched += 1
                 s["fetched"] += 1
@@ -553,8 +797,7 @@ def cmd_crawl(a):
                 if fr.status == "ok":
                     ex = extract_page(fr.text, fr.final_url or u)
                     row["strong"], row["name"] = ex["strong"], ex["name"]
-                    named = any(name_match(ex["name"], t["name"], t["brand"]) for t in targets)
-                    if page_codes(ex["strong"], all_codes) or named:
+                    if wanted.page(ex["name"], ex["strong"], u):
                         s["matched"] += 1
                         checked = []
                         for img in ex["images"][:3]:
@@ -562,19 +805,28 @@ def cmd_crawl(a):
                             if (not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,6}(:\d+)?", host)
                                     or re.search(r"undefined|null|none", img, re.I)):
                                 checked.append({"ok": False, "w": 0, "h": 0, "reason": "broken image address",
-                                                "white": False, "url": img})
+                                                "white": False, "url": img, "range_ok": False, "range_reason": ""})
                                 continue
-                            ir = fetcher.get(img)
-                            try:
-                                _check(ir, img)
-                            except Refused:
-                                if bare_host(urlsplit(img).netloc) == bare_host(urlsplit(u).netloc):
-                                    raise  # the brand's own site refused us: stop
-                                ir.status = "error"  # an image server elsewhere: skip this image only
-                            s["images_checked"] += 1
-                            q = assess(ir.content) if ir.status == "ok" else {
-                                "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}", "white": False}
-                            checked.append(dict(q, url=img))
+                            best = None
+                            for cand in dict.fromkeys([original_image(img), img]):
+                                ir = fetcher.get(cand)
+                                try:
+                                    _check(ir, cand)
+                                except Refused:
+                                    if bare_host(urlsplit(cand).netloc) == bare_host(urlsplit(u).netloc):
+                                        raise  # the brand's own site refused us: stop
+                                    ir.status = "error"  # an image server elsewhere: skip this image only
+                                s["images_checked"] += 1
+                                q = _assess_both(ir.content) if ir.status == "ok" else {
+                                    "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}",
+                                    "white": False, "range_ok": False, "range_reason": ""}
+                                q = dict(q, url=cand)
+                                if not best or (q["ok"], q["range_ok"], q["w"] * q["h"]) > (
+                                        best["ok"], best["range_ok"], best["w"] * best["h"]):
+                                    best = q
+                                if q["ok"]:
+                                    break
+                            checked.append(best)
                         row["images"] = json.dumps(checked)
                 out_rows[u] = row
                 if fetched % 50 == 0:
@@ -621,6 +873,22 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                 continue
             for c in found:
                 by_code[c].append((p, ""))
+        brand_name = ts[0]["brand"] if ts else ""
+        wire_pages, img_keys, range_pages = [], collections.defaultdict(set), collections.defaultdict(list)
+        for p in pages:
+            pk = wire_key(p.get("name") or "", brand_name)
+            if pk:
+                wire_pages.append((pk, p))
+                for im in json.loads(p.get("images") or "[]"):
+                    img_keys[im["url"]].add((pk["range"], pk["size"], pk["cores"], pk["colour"]))
+            elif p.get("name"):  # a range page of one of our wire ranges (our side is checked to be a wire)
+                rk = range_key(p["name"], brand_name)
+                if rk:
+                    range_pages[rk].append(p)
+        name_hits, nidx = collections.defaultdict(list), NameIndex(ts)
+        for p in pages:
+            for t2, sc in nidx.matches(p.get("name", ""), brand_name):
+                name_hits[t2["sku"]].append((p, sc))
         for t in ts:
             row = {"sku": t["sku"], "id": t["id"], "brand": t["brand"], "name": t["name"], "code": "",
                    "page_url": "", "image_url": "", "w": "", "h": "", "action": "none", "reason": ""}
@@ -644,12 +912,37 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                     if by_code.get(c) and not best and why.startswith("no brand page"):
                         why = "brand page has no product image"
             how = "model"
+            wk = wire_key(t["name"], t["brand"]) if not codes and is_wire(t["name"]) else None
+            if not best and wk:  # a wire: the brand's own page for this range, size, cores, colour
+                found = []
+                for pk, p in wire_pages:
+                    if not wire_match(pk, wk):
+                        continue
+                    for im in json.loads(p.get("images") or "[]"):
+                        if len(img_keys[im["url"]]) > 1:
+                            why = "brand wire photo is shared by different sizes or colours"
+                        elif not im.get("ok"):
+                            why = f"brand image failed quality check: {im.get('reason')}"
+                        else:
+                            found.append((im["w"] * im["h"], p, im))
+                if found:
+                    _, p, im = max(found, key=lambda x: x[0])
+                    best, how = (p, im, f"wire {wk['range']} {wk['size']:g} sq mm {wk['colour']}".strip()), "wire"
+                elif why == "no model number in our title":
+                    why = "no model number in our title; no brand page for this wire range, size and colour"
+            rk = range_key(t["name"], t["brand"]) if not codes and is_wire(t["name"]) else ""
+            if not best and rk and rk in range_pages:  # last resort: the range's own photo, padded
+                ims = [im for p in range_pages[rk] for im in json.loads(p.get("images") or "[]")
+                       if im.get("range_ok")]
+                if ims:
+                    im = max(ims, key=lambda i: i["w"] * i["h"])
+                    p = next(p for p in range_pages[rk] if im in json.loads(p.get("images") or "[]"))
+                    best, how = (p, im, f"range {rk}"), "range"
+                else:
+                    why = "brand range photo failed quality check"
             if not best:  # weaker route, applied only with --allow-name
                 scored = []
-                for p in pages:
-                    sc = name_match(p.get("name", ""), t["name"], t["brand"])
-                    if not sc:
-                        continue
+                for p, sc in name_hits.get(t["sku"], []):
                     good = [im for im in json.loads(p.get("images") or "[]")
                             if im.get("ok") and img_pages[im["url"]] < SHARED_IMAGE_PAGES]
                     if good:
@@ -665,7 +958,13 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                 if best:
                     p, im, c = best
                     row.update(code=c, page_url=p["url"], image_url=im["url"], w=im["w"], h=im["h"])
-                    if how == "name":
+                    if how == "range":
+                        if not t["image_src"]:
+                            row["action"] = "add-range"
+                            row["reason"] = "no image now; the brand's photo of this range, padded to a square"
+                        else:
+                            row["reason"] = "has an image; range photos never replace an image"
+                    elif how == "name":
                         if not t["image_src"]:
                             row["action"], row["reason"] = "add-name", "no image now; matched by product name"
                         elif t["web"] and current_quality.get(t["sku"]) and not current_quality[t["sku"]]["ok"]:
@@ -674,7 +973,8 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                         else:
                             row["reason"] = "has an image; product-name matches never replace a good image"
                     elif not t["image_src"]:
-                        row["action"], row["reason"] = "add", "no image now"
+                        row["action"], row["reason"] = "add", "no image now" + (
+                            "; matched by range, size, cores and colour" if how == "wire" else "")
                     elif t["has_our_image"]:
                         row["reason"] = "already has an official image from this tool"
                     elif t["web"]:
@@ -733,6 +1033,50 @@ def cmd_plan(a, woo=None):
     return 0
 
 
+def cmd_pad(a):
+    """Range photos are shown padded to a white square: fetch each one once (politely), pad it, write
+    it to --out-dir and point the plan rows at the copy that will be published under --base-url."""
+    import hashlib
+    from rtech_sync.config import load_config
+    rows = list(csv.DictReader(open(a.plan, newline="")))
+    todo = [r for r in rows if r["action"] == "add-range"]
+    if not todo:
+        print("pad: no range photos in the plan")
+        return 0
+    cfg = load_config(a.config)
+    cfg.fetch.require_contact_email()
+    fetcher = BrandFetcher(cfg.fetch)
+    out = Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    done, failed = {}, set()
+    for r in todo:
+        src = r["image_url"]
+        if src not in done and src not in failed:
+            fr = fetcher.get(src)
+            try:
+                _check(fr, src)
+            except Refused as e:
+                print(f"pad: stopped, {e}")
+                break
+            if fr.status != "ok" or not assess_range(fr.content)["range_ok"]:
+                failed.add(src)
+            else:
+                name = hashlib.sha1(src.encode()).hexdigest()[:16] + ".jpg"
+                (out / name).write_bytes(pad_square(fr.content))
+                done[src] = a.base_url.rstrip("/") + "/" + name
+        if src in done:
+            r["image_url"] = done[src]
+            r["reason"] += f" (brand photo {src})"
+        else:
+            r["action"], r["reason"] = "none", "range photo could not be fetched or failed the check"
+    with open(a.plan, "w", newline="") as fh:
+        w = csv.DictWriter(fh, PLAN_FIELDS)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"pad: {len(done)} range photos padded for {sum(1 for r in todo if r['action'] == 'add-range')} products")
+    return 0
+
+
 # ---------------------------------------------------------------- apply / remove
 def apply_payload(row) -> dict:
     p = {"id": int(row["id"]),
@@ -753,8 +1097,11 @@ def _night_ist(now=None) -> bool:
 
 def cmd_apply(a, woo, sleep=time.sleep):
     rows = list(csv.DictReader(open(a.plan, newline="")))
-    allowed = ("add", "replace") + (("add-name",) if a.allow_name else ())
-    todo = [r for r in rows if r["action"] in allowed]
+    allowed = ("add", "replace") + (("add-name",) if a.allow_name else ()) + (
+        ("add-range",) if getattr(a, "allow_range", False) else ())
+    # a range photo must already point at our padded copy (see cmd_pad)
+    todo = [r for r in rows if r["action"] in allowed
+            and (r["action"] != "add-range" or "/releases/download/" in r["image_url"])]
     if a.limit:
         todo = todo[:a.limit]
     ids = [int(r["id"]) for r in todo]
@@ -797,7 +1144,7 @@ def cmd_apply(a, woo, sleep=time.sleep):
         if not cur:
             r["result"] = "not on shop"
             continue
-        if (r["action"] == "add" or (r["action"] == "add-name" and not r["sku"].upper().startswith("WEB-"))) \
+        if (r["action"] in ("add", "add-range") or (r["action"] == "add-name" and not r["sku"].upper().startswith("WEB-"))) \
                 and cur.get("images"):
             r["result"] = "skipped: has an image now"
             continue
@@ -915,6 +1262,12 @@ def main(argv=None):
     s.add_argument("--batch", type=int, default=5)
     s.add_argument("--limit", type=int, default=0)
     s.add_argument("--allow-name", action="store_true", help="also apply product-name matches (add-name)")
+    s.add_argument("--allow-range", action="store_true", help="also apply padded range photos (add-range)")
+    s = sub.add_parser("pad")
+    s.add_argument("--plan", required=True)
+    s.add_argument("--out-dir", required=True)
+    s.add_argument("--base-url", required=True)
+    s.add_argument("--config", default="config.yaml")
     s = sub.add_parser("remove")
     s.add_argument("--brand-name", required=True)
     s = sub.add_parser("report")
@@ -931,6 +1284,8 @@ def main(argv=None):
         return cmd_plan(a)
     if a.cmd == "apply":
         return cmd_apply(a, _woo())
+    if a.cmd == "pad":
+        return cmd_pad(a)
     if a.cmd == "remove":
         return cmd_remove(a, _woo())
     return cmd_report(a)

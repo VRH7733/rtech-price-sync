@@ -25,7 +25,8 @@ def test_quality_accepts_clear_product_on_plain_background():
 
 
 def test_quality_rejects_small_banner_cropped_and_busy():
-    assert "too small" in bi.assess(_png(400, 400))["reason"]
+    assert "too small" in bi.assess(_png(300, 300))["reason"]
+    assert bi.assess(_png(400, 400))["ok"]  # 400 px is accepted since 18 Oct 2026
     assert "banner" in bi.assess(_png(1920, 600))["reason"]
     cut = bi.assess(_png(1000, 1000, box=(0, 0, 999, 600)))  # product runs off the edges
     assert not cut["ok"]
@@ -83,7 +84,7 @@ def test_plan_certain_matches_only_and_keeps_existing_images():
     rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
     assert rows["A"]["action"] == "add" and rows["A"]["page_url"] == "https://h/ahlhgxw060"
     assert rows["B"]["action"] == "none" and "already has an image" in rows["B"]["reason"]
-    assert rows["C"]["reason"] == "no model number in our title"
+    assert rows["C"]["reason"].startswith("no model number in our title")
     assert rows["D"]["action"] == "none" and "quality" in rows["D"]["reason"]
     assert rows["E"]["action"] == "none" and "range page" in rows["E"]["reason"]
 
@@ -298,3 +299,98 @@ def test_no_image_writes_during_the_nightly_price_window():
     assert not bi._night_ist(dt.datetime(2026, 10, 16, 18, 0, tzinfo=utc))   # 23:30 IST
     assert bi._night_ist(dt.datetime(2026, 10, 16, 19, 0, tzinfo=utc))       # 00:30 IST
     assert not bi._night_ist(dt.datetime(2026, 10, 17, 1, 0, tzinfo=utc))    # 06:30 IST
+
+
+def test_wire_key_reads_range_size_colour_and_length():
+    k = bi.wire_key("Polycab Maxima+ Green Wire HR FR-LSH LF 180 Meters / 6 Sqmm / Green", "Polycab")
+    assert (k["range"], k["size"], k["colour"], k["length"]) == ("maximaplusgreen", 6.0, "green", 180)
+    p = bi.wire_key("POLYCABMAXIMA+ Green Wire | 6 Sq. MM | 180 Meters | GREEN", "Polycab")
+    assert bi.wire_match(p, k)
+    assert bi.wire_key("Polycab Green Wire | HR FR-LSH LF | 6 Sq. MM | 180 Meters | GREEN", "Polycab")["range"] == "green"
+    assert not bi.wire_key("Polycab 185 Sq.mm 1 Core FR Industrial Flexible Cable Blue (100 m)", "Polycab")  # no range
+    other = bi.wire_key("POLYCABMAXIMA+ Green Wire | 6 Sq. MM | 90 Meters | GREEN", "Polycab")
+    assert not bi.wire_match(other, k)                    # other length
+    blue = bi.wire_key("POLYCABMAXIMA+ Green Wire | 6 Sq. MM | 180 Meters | BLUE", "Polycab")
+    assert not bi.wire_match(blue, k)                     # other colour
+    assert bi.range_key("HomeCab–FR", "KEI") == bi.range_key("KEI Homecab 2.5 Sq.mm 1 Core FR Cable", "KEI") == "homecab"
+    assert bi.range_key("SUPEREX GREEN HR + FR", "RR Kabel") != bi.range_key("RR Kabel Superex FR 1.5 Sq.mm", "RR Kabel")
+
+
+def _wt(sku, name, image=""):
+    return dict(_t(sku, name, image=image), brand="Polycab")
+
+
+def test_plan_wire_route_needs_the_exact_wire_page():
+    targets = [_wt("W1", "Polycab Primma house wire 6 sq mm Blue 90 m"),
+               _wt("W2", "Polycab Primma house wire 6 sq mm Red 90 m"),
+               _wt("W3", "Polycab Primma house wire 4 sq mm Blue 90 m")]
+    pages = [dict(_page("https://p/primma-6-blue", "", w=400, h=400), name="POLYCABPRIMMA | LF-FR | 6 Sq. MM | 90 Meters, Copper | Blue"),
+             dict(_page("https://p/primma-4-blue", "", ok=False, w=300, h=300), name="POLYCABPRIMMA | LF-FR | 4 Sq. MM | 90 Meters, Copper | Blue")]
+    rows = {r["sku"]: r for r in bi.plan(targets, {"polycab": pages})}
+    assert rows["W1"]["action"] == "add" and rows["W1"]["page_url"] == "https://p/primma-6-blue"
+    assert rows["W2"]["action"] == "none"                         # no red page: no photo of another colour
+    assert rows["W3"]["action"] == "none" and "quality" in rows["W3"]["reason"]
+
+
+def test_plan_range_photo_only_for_products_without_an_image():
+    targets = [dict(_t("K1", "KEI Homecab 2.5 Sq.mm 1 Core FR Cable Blue (180 m)"), brand="KEI"),
+               dict(_t("K2", "KEI Homecab 4 Sq.mm 1 Core FR Cable Red (180 m)", image="https://shop/k.jpg"), brand="KEI"),
+               dict(_t("K3", "KEI Conflame 1.5 Sq.mm 1 Core FR Cable Red (90 m)"), brand="KEI")]
+    img = {"url": "https://kei/home-cab.png", "ok": False, "w": 530, "h": 301, "reason": "too small (530x301)",
+           "range_ok": True, "range_reason": ""}
+    bad = dict(img, url="https://kei/conflame.png", range_ok=False, range_reason="banner shape")
+    pages = [{"url": "https://kei/cables-and-wires/house-wire/home-cab-fr/", "strong": "", "name": "HomeCab–FR",
+              "images": json.dumps([img])},
+             {"url": "https://kei/cables-and-wires/house-wire/con-flame-frls/", "strong": "", "name": "ConFlame-FRLS",
+              "images": json.dumps([bad])}]
+    rows = {r["sku"]: r for r in bi.plan(targets, {"kei": pages})}
+    assert rows["K1"]["action"] == "add-range" and rows["K1"]["image_url"] == "https://kei/home-cab.png"
+    assert rows["K2"]["action"] == "none"
+    assert rows["K3"]["action"] == "none" and "range photo failed" in rows["K3"]["reason"]
+
+
+def test_range_photo_is_padded_not_cropped():
+    from PIL import Image
+    wide = _png(530, 300, box=(20, 40, 510, 260))
+    q = bi.assess_range(wide)
+    assert q["range_ok"], q
+    sq = Image.open(io.BytesIO(bi.pad_square(wide)))
+    assert sq.width == sq.height >= 530
+    assert not bi.assess_range(_png(300, 200))["range_ok"]            # too small even padded
+    assert not bi.assess_range(_png(1600, 300))["range_ok"]           # a banner
+
+
+def test_original_image_drops_resize_query_only():
+    assert bi.original_image("https://cms.polycab.com/media/a/b_img_01.jpg?format=webp") == "https://cms.polycab.com/media/a/b_img_01.jpg"
+    assert bi.original_image("https://x/img?id=55") == "https://x/img?id=55"
+
+
+def test_apply_puts_range_photos_on_only_from_our_padded_copy(tmp_path, monkeypatch):
+    import csv as _csv
+    from types import SimpleNamespace as NS
+    monkeypatch.setattr(bi, "_night_ist", lambda now=None: False)
+    plan = tmp_path / "plan.csv"
+    rows = [dict(sku="K1", id="11", brand="KEI", name="KEI Homecab 2.5", code="range homecab", page_url="https://kei/p",
+                 image_url="https://kei/home-cab.png", w="530", h="301", action="add-range", reason="", result=""),
+            dict(sku="K2", id="12", brand="KEI", name="KEI Homecab 4", code="range homecab", page_url="https://kei/p",
+                 image_url="https://github.com/o/r/releases/download/brand-range-images/ab.jpg", w="530", h="301",
+                 action="add-range", reason="", result="")]
+    with open(plan, "w", newline="") as fh:
+        w = _csv.DictWriter(fh, bi.PLAN_FIELDS)
+        w.writeheader()
+        w.writerows(rows)
+    sent = []
+
+    class Woo:
+        def get(self, path, params):
+            return 200, [{"id": int(i), "images": [], "meta_data": []} for i in params["include"].split(",")], {}
+
+        def post(self, path, body):
+            sent.extend(body["update"])
+            return 200, {"update": [{"id": p["id"], "images": [{"id": 900}]} for p in body["update"]]}
+
+    bi.cmd_apply(NS(plan=str(plan), limit=0, allow_name=False, allow_range=True, batch=5), Woo(), sleep=lambda s: None)
+    assert [p["id"] for p in sent] == [12]
+    assert not bi.FORBIDDEN & set(sent[0])
+    got = {r["sku"]: r["result"] for r in _csv.DictReader(open(plan))}
+    assert got == {"K1": "", "K2": "done"}
