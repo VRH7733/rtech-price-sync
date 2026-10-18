@@ -188,6 +188,7 @@ def run_sync(
     all_products: bool = False,
     brand_prices: Optional[dict] = None,
     kept_only: bool = False,
+    only_skus: Optional[list] = None,
 ) -> RunResult:
     started = now()
     deadline = started + cfg.fetch.max_runtime_minutes * 60
@@ -199,6 +200,10 @@ def run_sync(
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
     if only_new:  # products the bot has never priced (e.g. created after the morning run began)
         eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
+    if only_skus:  # a targeted re-check (e.g. after a new guard): these products, every one fetched
+        wanted_skus = set(only_skus)
+        eligible = [r for r in eligible if r.sku in wanted_skus]
+        all_products = True
     brand_prices = brand_prices or {}
     brand_only: set = set()  # not checked today, but its brand MRP keeps it priced (no requests)
     if kept_only:  # re-judge without any request: products no site is asked about (kept prices),
@@ -476,6 +481,7 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, help="limit number of rows (testing)")
     ap.add_argument("--only-new", action="store_true", help="only rows the bot has never priced")
     ap.add_argument("--all-products", action="store_true", help="check every product, not today's share")
+    ap.add_argument("--sku", action="append", help="only these products, all fetched (repeatable)")
     ap.add_argument("--kept-only", action="store_true",
                     help="only products no site is asked about (re-judge kept prices; sends no requests)")
     ap.add_argument("--today", help="override date YYYY-MM-DD (testing)")
@@ -515,7 +521,7 @@ def main(argv=None) -> int:
         rr = run_sync(cfg, rows, state, fetcher, woo, today, args.publish, args.brand, args.limit,
                       include_pending=args.include_pending, only_new=args.only_new,
                       all_products=args.all_products, brand_prices=brand_prices,
-                      kept_only=args.kept_only)
+                      kept_only=args.kept_only, only_skus=args.sku)
     finally:
         # Save state FIRST: it records what is already live. Losing it would make tomorrow's run
         # compare against old prices and old dates.

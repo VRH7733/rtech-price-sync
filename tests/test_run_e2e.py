@@ -497,3 +497,13 @@ def test_kept_only_rejudges_products_no_site_is_asked_about_without_any_request(
     state["items"]["M-1"]["hidden"] = True  # a Quote product with a brand MRP joins, still no request
     rr = go(c, [ib, mog], state, f, woo, publish=True, kept_only=True, brand_prices={"M-1": _bp(1234)})
     assert f.calls == [] and {it["row"].sku: it["decision"].price for it in rr.items} == {"IB-1": None, "M-1": D(1234)}
+
+
+def test_targeted_skus_are_fetched_whatever_the_rotation_day():
+    c = live_cfg()
+    rows = [make_row(sku=f"RT-T-{i:03d}", wc_product_id=400 + i, wc_variation_id=None) for i in range(30)]
+    seen = (TODAY - timedelta(days=1)).isoformat()
+    state = {"version": 1, "items": {r.sku: {"first_seen": seen, "last_ok": seen, "price": "1000"} for r in rows}}
+    rr = go(c, rows, state, FakeFetcher(pages(1000, None, None)), FakeWoo(), publish=False,
+            only_skus=["RT-T-001", "RT-T-002", "RT-T-003"])
+    assert sorted(it["row"].sku for it in rr.items) == ["RT-T-001", "RT-T-002", "RT-T-003"]

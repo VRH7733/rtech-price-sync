@@ -37,6 +37,10 @@ on:
         description: "check every product, not just today's third (sends 3x the requests; avoid)"
         type: boolean
         default: false
+      skus:
+        description: "only these SKUs, space-separated (a targeted re-check; empty = normal)"
+        required: false
+        default: ""
       kept_only:
         description: "only products no site is asked about: re-judge their kept prices (no requests)"
         type: boolean
@@ -117,6 +121,7 @@ jobs:
           ONLY_NEW: ${{ github.event.inputs.only_new }}
           ALL_PRODUCTS: ${{ github.event.inputs.all_products }}
           KEPT_ONLY: ${{ github.event.inputs.kept_only }}
+          SKUS: ${{ github.event.inputs.skus }}
         run: |
           set +e
           ARGS="--catalogue pd/catalogue/rows --data pd/data"
@@ -125,6 +130,7 @@ jobs:
           if [ -n "$BRAND" ]; then ARGS="$ARGS --brand $BRAND"; fi
           if [ "$ALL_PRODUCTS" = "true" ]; then ARGS="$ARGS --all-products"; fi
           if [ "$KEPT_ONLY" = "true" ]; then ARGS="$ARGS --kept-only"; fi
+          for s in $SKUS; do ARGS="$ARGS --sku $s"; done
           if [ "$ONLY_NEW" = "true" ]; then ARGS="$ARGS --only-new"; fi
           python -m rtech_sync.run $ARGS
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
