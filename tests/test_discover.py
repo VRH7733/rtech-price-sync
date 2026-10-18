@@ -77,3 +77,21 @@ def test_blocked_sitemap_writes_nothing_so_earlier_results_survive(tmp_path, mon
     out = tmp_path / "out"
     rc = discover.main(["--source", "industrybuying", "--brand", "havells", "--out", str(out)])
     assert rc == 1 and not (out / "industrybuying.csv").exists()
+
+
+def test_capped_run_fetches_first_brand_first_and_skips_catalogue_urls(tmp_path):
+    urls = ["https://www.moglix.com/high-precision-havells-tape/mp/1",
+            "https://www.moglix.com/havells-mcb/mp/2",
+            "https://www.moglix.com/legrand-switch/mp/3",
+            "https://www.moglix.com/havells-fan/mp/4",
+            "https://www.moglix.com/rr-kabel-wire/mp/5"]
+    assert discover.order_by_brand(urls, ["legrand", "havells", "rr kabel"]) == [
+        "https://www.moglix.com/legrand-switch/mp/3", "https://www.moglix.com/havells-fan/mp/4",
+        "https://www.moglix.com/havells-mcb/mp/2", "https://www.moglix.com/rr-kabel-wire/mp/5",
+        "https://www.moglix.com/high-precision-havells-tape/mp/1"]
+    rows = tmp_path / "rows"
+    rows.mkdir()
+    (rows / "havells.csv").write_text(
+        "sku,brand,title,mode,publish,url_moglix\nRT-HAVE-001,Havells,MCB,priced,yes,https://www.moglix.com/havells-mcb/mp/2\n",
+        encoding="utf-8")
+    assert "https://www.moglix.com/havells-mcb/mp/2" in discover.catalogue_urls(rows)

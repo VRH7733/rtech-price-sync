@@ -5,6 +5,10 @@
   python tools/discover.py --source homerun --brand polycab --fetch --max-pages 80 --out out
   python tools/discover.py --source industrybuying --brand havells --fetch --previous old/industrybuying.csv
 
+--skip-catalogue DIR: catalogue rows folder; URLs already used by a product are not fetched or listed.
+Candidates are fetched in --brand order (pages whose slug starts with the first brand first), so a
+capped run spends its pages on the brands that matter most.
+
 --previous: a CSV from an earlier run. Pages fetched there are copied, not fetched again, so a
 second run continues where the first stopped (--max-pages counts only new fetches).
 
@@ -22,6 +26,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from rtech_sync.config import load_config  # noqa: E402
@@ -70,6 +75,20 @@ def collect(fetcher, source, brands, keywords, log):
         queue += children
         log(f"{sm}: {len(pages)} pages, {len(children)} child sitemaps, {len(urls) - n0} candidates")
     return sorted(set(urls)), len(seen)
+
+
+def order_by_brand(urls, brands):
+    """First-brand pages first; within a brand, URL order. A slug that only mentions a brand later
+    ("high-precision-tape") goes last."""
+    def rank(u):
+        first = urlparse(u).path.strip("/").split("/")[0].lower()
+        return next((i for i, b in enumerate(brands) if first.startswith(b.replace(" ", "-") + "-")), len(brands))
+    return sorted(urls, key=lambda u: (rank(u), u))
+
+
+def catalogue_urls(rows_dir) -> set:
+    from rtech_sync.catalogue import load_catalogue
+    return {u.split("?variant=")[0] for r in load_catalogue(rows_dir) for u in r.urls.values() if u}
 
 
 def fetch_rows(fetcher, source, url):
@@ -125,6 +144,7 @@ def main(argv=None) -> int:
     ap.add_argument("--fetch", action="store_true", help="also fetch candidate pages (IB/HomeRun)")
     ap.add_argument("--max-pages", type=int, default=100)
     ap.add_argument("--previous", default="", help="earlier <source>.csv: reuse its fetched pages")
+    ap.add_argument("--skip-catalogue", default="", help="catalogue rows dir: skip URLs it already uses")
     ap.add_argument("--out", default="out")
     ap.add_argument("--config", default=os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
     a = ap.parse_args(argv)
@@ -140,6 +160,12 @@ def main(argv=None) -> int:
     if not urls:  # a blocked or empty sitemap must not overwrite earlier results with nothing
         print(f"{a.source}: no candidate URLs; nothing written")
         return 1
+    if a.skip_catalogue:
+        used = catalogue_urls(a.skip_catalogue)
+        n0 = len(urls)
+        urls = [u for u in urls if u not in used]
+        print(f"{a.source}: {n0 - len(urls)} candidates already in the catalogue, skipped")
+    urls = order_by_brand(urls, brands)
     prev = load_previous(a.previous)
     rows, fetched = plan_rows(urls, prev, a.fetch, a.max_pages, lambda u: fetch_rows(fetcher, a.source, u))
     for r in rows:
