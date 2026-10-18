@@ -54,3 +54,12 @@ def test_brand_must_be_the_maker_not_a_word_in_the_title():
     assert not is_brand_product("IMO PRECISION CONTROLS Microswitch", "Precision")
     assert not is_brand_product("Finolex Silver FR Wire 90 Meters", "GM")
     assert has_brand("gm 6a switch", "GM") and not has_brand("sigma 6a switch", "GM")
+
+
+def test_fetched_moglix_page_becomes_a_row_unfetched_one_does_not():
+    disc = {"industrybuying": [], "homerun": [],
+            "moglix": [cand("moglix", "m1", "Havells Euro II 63A Single Pole C Curve MCB"),
+                       cand("moglix", "m2", "Havells Euro II 40A Double Pole C Curve MCB", fetched="no")]}
+    rows = build("Havells", disc, [])
+    assert [r.urls for r in rows] == [{"moglix": "m1"}]
+    assert rows[0].sku == "RT-HAVE-001" and rows[0].publish == "pending_review"

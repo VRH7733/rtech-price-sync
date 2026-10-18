@@ -3,11 +3,11 @@
 
   python tools/rows_from_discovery.py DISCOVERY_DIR ROWS_DIR --brand Havells --brand "RR Kabel"
 
-Each priced product page found on IndustryBuying or HomeRun becomes one catalogue row named after
+Each priced product page fetched from IndustryBuying, HomeRun or Moglix becomes one catalogue row named after
 the marketplace title, so the shop lists real products. The same product on the other sites is
 attached only when exactly ONE candidate passes the same variant/pack check the daily run uses
 (normalise.check_variant on a hint built from the title: product line, sizes, ratings, colour).
-Moglix is matched by URL slug (its pages are not fetched in discovery).
+Unfetched Moglix pages are matched by URL slug only, never made into rows.
 
 - Rows go to ROWS_DIR/<brand>.csv. Existing files are extended, never rewritten: rows and URLs
   already there are kept, and a product whose URL is already used is skipped.
@@ -118,7 +118,7 @@ def build(brand: str, disc: dict, existing: list) -> list:
     n = max(nums, default=0)
     new = []
     taken = set(used)
-    for src in ("industrybuying", "homerun"):
+    for src in ("industrybuying", "homerun", "moglix"):
         for cand in disc[src]:
             if cand["url"] in taken or not is_brand_product(cand.get("title") or "", brand):
                 continue

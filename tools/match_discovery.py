@@ -15,6 +15,7 @@ import csv
 import os
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -72,25 +73,35 @@ def passes(row, cand) -> bool:
 
 
 def match(rows, disc, review):
-    n = 0
+    used = {u for r in rows for u in r.urls.values()}
+    proposals = []
     for r in rows:
         if r.mode != "priced":
             continue
         for src in SOURCES:
             if r.urls.get(src):
                 continue
-            ok = [c for c in disc[src] if passes(r, c)]
+            ok = [c for c in disc[src] if c["url"] not in used and passes(r, c)]
             if len(ok) > 1 and any(c["_in_stock"] for c in ok):
                 ok = [c for c in ok if c["_in_stock"]]
             if len(ok) == 1:
-                r.urls[src] = ok[0]["url"]
-                if r.publish == "no":
-                    r.publish = "pending_review"
-                r.match_confidence = "high"
-                n += 1
+                proposals.append((r, src, ok[0]["url"]))
             for c in ok if len(ok) > 1 else []:
                 review.append([r.sku, r.title, r.variant_hint, r.pack_size, src, c["url"],
                                c.get("price", ""), c["_ident"][:120], f"{len(ok)} candidates pass"])
+    # a page that fits two rows belongs to neither: guessing would give one of them a wrong price
+    claims = Counter(u for _, _, u in proposals)
+    n = 0
+    for r, src, u in proposals:
+        if claims[u] > 1:
+            review.append([r.sku, r.title, r.variant_hint, r.pack_size, src, u, "", "",
+                           f"{claims[u]} rows fit this page"])
+            continue
+        r.urls[src] = u
+        if r.publish == "no":
+            r.publish = "pending_review"
+        r.match_confidence = "high"
+        n += 1
     return n
 
 

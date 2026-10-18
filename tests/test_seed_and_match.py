@@ -80,3 +80,18 @@ def _seed_file(tmp_path):
         w.writeheader()
         w.writerows(SEED)
     return p
+
+
+def test_a_page_that_fits_two_rows_goes_to_neither():
+    from rtech_sync.models import Row
+    page = {"source": "moglix", "url": "m1", "fetched": "yes", "price": "500",
+            "_ident": "Havells Lifeline Plus 1.5 sqmm Red 90 m Wire", "_in_stock": True}
+    a = Row(sku="A", brand="Havells", mode="priced", variant_hint="lifeline; 1.5sqmm; red", pack_size="90 m")
+    b = Row(sku="B", brand="Havells", mode="priced", variant_hint="lifeline; 1.5sqmm; red", pack_size="90 m")
+    review = []
+    disc = {"moglix": [page], "industrybuying": [], "homerun": []}
+    assert match_discovery.match([a, b], disc, review) == 0
+    assert not a.urls.get("moglix") and not b.urls.get("moglix") and len(review) == 2
+    assert match_discovery.match([a], disc, []) == 1 and a.urls["moglix"] == "m1"
+    c = Row(sku="C", brand="Havells", mode="priced", variant_hint="lifeline; 1.5sqmm; red", pack_size="90 m")
+    assert match_discovery.match([a, c], disc, []) == 0  # m1 is already A's page
