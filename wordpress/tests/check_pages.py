@@ -80,15 +80,39 @@ s, _, home = get("/")
 check(s == 200, "home: HTTP 200")
 print("     home description:", meta(home, "description"))
 check("Havells" in (meta(home, "description") or ""), "home: description names the main brands")
-org = [n for n in ld(home) if n.get("@type") == "Organization"]
+def types(n):
+    t = n.get("@type")
+    return t if isinstance(t, list) else [t]
+
+
+org = [n for n in ld(home) if "Organization" in types(n)]
 if org:
-    check(org[0].get("name") == "RTechElectricals", f"home: Organization name ({org[0].get('name')})")
+    o = org[0]
+    print("     Organization:", json.dumps(o, ensure_ascii=False)[:600])
+    check(o.get("name") == "RTechElectricals", f"home: Organization name ({o.get('name')})")
+    check("Store" in types(o), "home: business is a Store (local business)")
+    check(o.get("address", {}).get("postalCode") == "560065" and o["address"].get("addressLocality") == "Bengaluru",
+          "home: Bengaluru address with PIN 560065")
+    check(o.get("telephone", "").startswith("+91"), "home: phone")
+
+s, _, shop = get("/shop/")
+if s == 200:
+    d = meta(shop, "description") or ""
+    print("     shop description:", d)
+    check("Havells" in d and "ABB" not in d, "shop: description names the main brands")
+s, _, cat = get("/product-category/wires-cables/")
+d = meta(cat, "description") or ""
+print("     category description:", d)
+check(d.startswith("Buy Wires & Cables in Bengaluru") or d.startswith("Buy Wires &amp; Cables in Bengaluru"),
+      "category: description says what and where")
+check("Havells" in d, "category: description names the brands in it")
 
 s, ctype, llms = get("/llms.txt")
 print(llms)
 check(s == 200 and ctype.startswith("text/plain"), "llms.txt: 200 text/plain")
 check(llms.startswith("# RTechElectricals"), "llms.txt: heading")
 check("Wires & Cables" in llms and "[Havells]" in llms and "Contact Us" in llms, "llms.txt: categories, brands, pages")
+check("560065" in llms and "Phone: +91" in llms, "llms.txt: address and phone")
 
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 mine = [l for l in log.splitlines() if "rtech-ai-seo" in l]

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.0' );
+define( 'RTECH_AI_VERSION', '1.0.1' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -25,8 +25,13 @@ function rtech_ai_settings() {
 		'trade_name' => 'RAMTECH AUTOMATION',
 		'city'       => 'Bengaluru',
 		'email'      => 'info@ramtechautomation.co.in',
-		'phone'      => '',
+		'phone'      => '+91 84318 77469',
+		// the shop address the site's own business data already shows (18 Oct 2026 audit)
+		'street'     => 'Ground Floor, Building No. 904, 21st Cross, 16th Main, Judicial Layout, Allalasandra, near Yelahanka',
+		'postcode'   => '560065',
+		'region'     => 'Karnataka',
 		'about'      => 'RTechElectricals is an authorised dealer of electrical products in Bengaluru, Karnataka, India: wires and cables, modular switches, MCBs and switchgear, lighting, fans and pumps from Havells, Legrand, Polycab, KEI, RR Kabel, Finolex, GM and other brands. Prices shown on the site include GST. Products without a listed price can be quoted on request.',
+		'shop_desc'  => 'Shop 5,000+ electrical products in Bengaluru: Havells, Legrand, Polycab, KEI, RR Kabel and Finolex wires, cables, switches, MCBs, fans and lights. GST prices.',
 		'home_desc'  => 'Authorised dealer in Bengaluru for Havells, Legrand, Polycab, KEI, RR Kabel and Finolex. 5,000+ wires, cables, switches, MCBs and lights. GST prices, order online.',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
@@ -147,7 +152,52 @@ function rtech_ai_filter_description( $description ) {
 	if ( is_front_page() ) {
 		return rtech_ai_settings()['home_desc'];
 	}
+	if ( function_exists( 'is_shop' ) && is_shop() ) {
+		return rtech_ai_settings()['shop_desc'];
+	}
+	if ( function_exists( 'is_product_category' ) && is_product_category() ) {
+		$term = get_queried_object();
+		if ( $term && ! trim( (string) get_term_meta( $term->term_id, 'rank_math_description', true ) ) ) {
+			return rtech_ai_trim( rtech_ai_category_description( $term ) );
+		}
+	}
 	return $description;
+}
+
+/** The brands with the most products in a category (and its sub-categories), cached for 12 hours. */
+function rtech_ai_category_brands( $term, $limit = 5 ) {
+	global $wpdb;
+	$key    = 'rtech_ai_cat_brands_' . $term->term_id;
+	$brands = get_transient( $key );
+	if ( is_array( $brands ) ) {
+		return $brands;
+	}
+	$brands = array();
+	if ( taxonomy_exists( 'product_brand' ) ) {
+		$ids = array_map( 'intval', array_merge( array( $term->term_id ), (array) get_term_children( $term->term_id, 'product_cat' ) ) );
+		$in  = implode( ',', $ids );
+		// phpcs:ignore WordPress.DB.PreparedSQL -- $in is a list of integers
+		$brands = $wpdb->get_col( $wpdb->prepare( "SELECT t.name FROM {$wpdb->term_relationships} r1 JOIN {$wpdb->term_taxonomy} c ON c.term_taxonomy_id = r1.term_taxonomy_id AND c.taxonomy = 'product_cat' AND c.term_id IN ($in) JOIN {$wpdb->posts} p ON p.ID = r1.object_id AND p.post_status = 'publish' JOIN {$wpdb->term_relationships} r2 ON r2.object_id = r1.object_id JOIN {$wpdb->term_taxonomy} b ON b.term_taxonomy_id = r2.term_taxonomy_id AND b.taxonomy = 'product_brand' JOIN {$wpdb->terms} t ON t.term_id = b.term_id GROUP BY t.term_id ORDER BY COUNT(DISTINCT r1.object_id) DESC LIMIT %d", $limit ) );
+		$brands = array_map( 'rtech_ai_plain', (array) $brands );
+	}
+	set_transient( $key, $brands, 12 * HOUR_IN_SECONDS );
+	return $brands;
+}
+
+/** "Buy Wires & Cables in Bengaluru from RTechElectricals: 2,506 products from Havells, KEI, ..." */
+function rtech_ai_category_description( $term ) {
+	$s      = rtech_ai_settings();
+	$brands = rtech_ai_category_brands( $term );
+	$count  = (int) $term->count;
+	foreach ( (array) get_term_children( $term->term_id, 'product_cat' ) as $child ) {
+		$c      = get_term( $child, 'product_cat' );
+		$count += ( $c && ! is_wp_error( $c ) ) ? (int) $c->count : 0;
+	}
+	$text = 'Buy ' . rtech_ai_plain( $term->name ) . ' in ' . $s['city'] . ' from ' . $s['brand_name'] . ': ' . number_format( $count ) . ' products';
+	if ( $brands ) {
+		$text .= ' from ' . implode( ', ', $brands );
+	}
+	return $text . '. Prices include GST; order online or request a quote.';
 }
 add_filter( 'rank_math/frontend/description', 'rtech_ai_filter_description', 20 );
 add_filter( 'rank_math/opengraph/facebook/og_description', 'rtech_ai_filter_description', 20 );
@@ -215,6 +265,25 @@ add_filter(
 			}
 			$data['publisher']['url'] = home_url( '/' );
 			$data['publisher']['description'] = $s['about'];
+			// a shop with an address is a local business: Google and AI answers use it for "in Bengaluru"
+			if ( $s['street'] ) {
+				$data['publisher']['@type']      = array( 'Organization', 'Store' );
+				$data['publisher']['address']    = array(
+					'@type'           => 'PostalAddress',
+					'streetAddress'   => $s['street'],
+					'addressLocality' => $s['city'],
+					'addressRegion'   => $s['region'],
+					'postalCode'      => $s['postcode'],
+					'addressCountry'  => 'IN',
+				);
+				$data['publisher']['areaServed'] = array( $s['city'], $s['region'] );
+			}
+			if ( $s['phone'] ) {
+				$data['publisher']['telephone'] = preg_replace( '/[^\d+]/', '', $s['phone'] );
+			}
+			if ( $s['email'] ) {
+				$data['publisher']['email'] = $s['email'];
+			}
 		}
 		return $data;
 	},
@@ -370,11 +439,15 @@ function rtech_ai_llms_txt() {
 			get_option( 'woocommerce_store_postcode' ),
 		)
 	);
-	if ( $addr ) {
-		$facts[] = '- Address: ' . implode( ', ', $addr );
+	if ( ! get_option( 'woocommerce_store_address' ) && $s['street'] ) {
+		$addr = array( $s['street'], $s['city'], $s['region'] . ' ' . $s['postcode'], 'India' );
 	}
+	if ( $addr ) {
+		$facts[] = '- Address: ' . implode( ', ', array_filter( $addr ) );
+	}
+	$facts[] = '- Serves: ' . $s['city'] . ' and ' . $s['region'];
 	if ( $s['phone'] ) {
-		$facts[] = '- Phone / WhatsApp: ' . $s['phone'];
+		$facts[] = '- Phone: ' . $s['phone'];
 	}
 	if ( $s['email'] ) {
 		$facts[] = '- Email: ' . $s['email'];
@@ -504,7 +577,7 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'city', 'email', 'phone', 'home_desc', 'about' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email'] = sanitize_email( $out['email'] );
@@ -520,10 +593,14 @@ function rtech_ai_settings_page() {
 	$fields = array(
 		'brand_name' => 'Shop name shown to Google and AI',
 		'trade_name' => 'Registered trade name',
+		'street'     => 'Shop street address',
 		'city'       => 'City',
+		'region'     => 'State',
+		'postcode'   => 'PIN code',
 		'email'      => 'Customer email (shown in /llms.txt)',
-		'phone'      => 'Customer phone / WhatsApp (shown in /llms.txt)',
+		'phone'      => 'Customer phone (shown in /llms.txt and the business data)',
 		'home_desc'  => 'Home page description (Google shows about 155 characters)',
+		'shop_desc'  => 'Shop page description',
 		'about'      => 'About the business (top of /llms.txt and the business data)',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
@@ -533,7 +610,7 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'about', 'home_desc' ), true ) ) {
+		if ( in_array( $k, array( 'about', 'home_desc', 'shop_desc' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';
 		} else {
 			echo '<input class="regular-text" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="' . esc_attr( $s[ $k ] ) . '">';

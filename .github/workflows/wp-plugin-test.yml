@@ -59,6 +59,7 @@ jobs:
           wp plugin activate rtech-ai-seo
           wp eval-file ../wordpress/tests/setup_site.php
           wp option update woocommerce_coming_soon no
+          wp wc tool run install_pages --user=admin || true
           wp rewrite flush --quiet
           cp ../wordpress/tests/router.php .
 
