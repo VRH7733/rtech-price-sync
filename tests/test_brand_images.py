@@ -424,9 +424,23 @@ def test_name_route_never_shows_another_colour():
     assert bi.colour_ok("Havells Fusion ES Pearl Ivory 1400 mm Ceiling Fan", "Fusion ES /fusion-es-1400mm-pearl-ivory.html")
     targets = [_t("F1", "Havells Fusion ES Pearl Ivory 1400 mm Ceiling Fan"),
                _t("F2", "Havells Fusion ES Silver Blue 1400 mm Ceiling Fan")]
-    pages = [dict(_page("https://h/fusion-es-pearl-ivory.html", "x"), name="Fusion ES"),
-             dict(_page("https://h/fusion-es-brown.html", "x"), name="Fusion ES")]
+    pages = [dict(_page("https://h/fusion-es-pearl-ivory.html", "x"), name="Fusion ES Ceiling Fan"),
+             dict(_page("https://h/fusion-es-brown.html", "x"), name="Fusion ES Ceiling Fan")]
     rows = {r["sku"]: r for r in bi.plan(targets, {"havells": pages})}
     assert rows["F1"]["action"] == "add-name" and rows["F1"]["page_url"].endswith("pearl-ivory.html")
     assert rows["F2"]["action"] == "none" and "another colour" in rows["F2"]["reason"]
     assert not bi.colour_ok("Havells Andria ES Quartz 1200 mm Ceiling Fan", "Andria ES /fhcad2sebr48-c.html")
+
+
+def test_same_product_under_several_store_paths_is_not_a_shared_image():
+    targets = [_t("V1", "Havells Vanessa 20 W Glamtube 6500 K Cool Daylight")]
+    img = "https://havells.com/media/catalog/product/v.jpg"
+    pages = [dict(_page(f"https://havells.com/{s}lhewajpgpv1g020-c.html", "x", img=img), name="Vanessa Glamtube")
+             for s in ("", "reo/", "lloyd/", "crabtree/", "havells_studio/")]
+    assert bi.plan(targets, {"havells": pages})[0]["action"] == "add-name"
+
+
+def test_name_route_needs_two_naming_words():
+    t = "Standard by Havells Combined Plate 4 M IVY Series Ivy Crest Cubes"
+    assert not bi.name_match("4 M Plate", t, "Havells")
+    assert bi.name_match("Reo Elegant 2 M Fan Regulator", "Havells Reo Elegant 2 M Fan Regulator", "Havells")

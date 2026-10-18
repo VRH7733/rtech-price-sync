@@ -130,7 +130,7 @@ def name_match(page_name: str, title: str, brand: str) -> int:
     bw = set(_name_words(brand))
     words = [w for w in _name_words(page_name) if w not in bw]
     ours = set(_name_words(title))
-    if len(words) < 2 or not all(w in ours for w in words):
+    if len(words) < 2 or len(_distinct(words)) < 2 or not all(w in ours for w in words):
         return 0
     if any(w in COLOURS and w not in ours for w in words):
         return 0
@@ -255,6 +255,16 @@ def colour_ok(title: str, page_text: str) -> bool:
     return True
 
 
+NAME_GENERIC = {"plate", "plates", "lamp", "lamps", "led", "light", "lights", "cable", "cables", "wire", "wires",
+                "switch", "switches", "socket", "sockets", "module", "modules", "combined", "cover", "frame", "fan",
+                "fans", "board", "box", "holder", "pack", "series", "type", "with", "white", "black", "grey"}
+
+
+def _distinct(words) -> list:
+    """Words that say which product it is (a range or model name), not what kind of thing it is."""
+    return [w for w in words if re.search(r"[a-z]", w) and len(w) >= 3 and w not in NAME_GENERIC]
+
+
 class NameIndex:
     """name_match against many titles at once: words -> titles that contain them all."""
 
@@ -274,7 +284,7 @@ class NameIndex:
         pn = page_name.split("|")[0].split(" - ")[0]
         bw = set(_name_words(brand))
         words = [w for w in _name_words(pn) if w not in bw]
-        if len(words) < 2:
+        if len(words) < 2 or len(_distinct(words)) < 2:
             return []
         cand = set.intersection(*(self.post.get(w, set()) for w in set(words)))
         return [(self.targets[i], len(words)) for i in sorted(cand)
@@ -902,10 +912,14 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
             for c in codes_for(t["name"]):
                 code_skus[c].add(t["sku"])
         all_codes = set(code_skus)
-        img_pages = collections.Counter()
+        # how many different products show an image; the same product page under several store
+        # paths (havells.com/reo/x.html, /lloyd/x.html, /x.html) counts once
+        img_slugs = collections.defaultdict(set)
         for p in pages:
+            slug = urlsplit(p["url"]).path.rstrip("/").rsplit("/", 1)[-1]
             for im in json.loads(p.get("images") or "[]"):
-                img_pages[im["url"]] += 1
+                img_slugs[im["url"]].add(slug)
+        img_pages = collections.Counter({u: len(v) for u, v in img_slugs.items()})
         by_code = collections.defaultdict(list)
         for p in pages:
             found = page_codes(p.get("strong", ""), all_codes)
