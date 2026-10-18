@@ -113,6 +113,13 @@ def targets(rows, state, plan, known, legrand=None):
 def main(argv=None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     data = Path(argv[0])
+    lines = []
+
+    def print(*a):  # also kept in the data repo: Actions logs cannot be read from the container
+        msg = " ".join(str(x) for x in a)
+        lines.append(msg)
+        sys.stdout.write(msg + "\n")
+
     cfg = load_config(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
     cfg.fetch.require_contact_email()
     rows = load_catalogue(data / "catalogue" / "rows")
@@ -125,7 +132,7 @@ def main(argv=None) -> int:
         known = json.loads(out_path.read_text(encoding="utf-8")).get("items", {})
     today = datetime.now(ZoneInfo(cfg.timezone)).date().isoformat()
     fetcher = Fetcher(cfg.fetch)
-    legrand = legrand_pages(fetcher)
+    legrand = legrand_pages(fetcher, log=print)
     todo = targets(rows, state, plan, known, legrand)
     print(f"{len(todo)} products to read")
     refused, stopped, n_ok, n_bad = {}, set(), 0, 0
@@ -152,6 +159,7 @@ def main(argv=None) -> int:
     out_path.write_text(json.dumps({"items": dict(sorted(known.items()))}, indent=1) + "\n", encoding="utf-8")
     print(f"brand MRPs read: {n_ok}; without an MRP: {n_bad}; stopped: {sorted(stopped) or 'none'}; "
           f"requests per host {dict(getattr(fetcher, 'request_log', {}))}")
+    (data / "data" / "brand_prices_log.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0
 
 

@@ -42,5 +42,5 @@ jobs:
           cd pd
           git config user.name "price-sync-bot"
           git config user.email "price-sync-bot@users.noreply.github.com"
-          git add data/brand_prices.json
+          git add data/brand_prices.json data/brand_prices_log.txt
           git diff --cached --quiet && echo "nothing new" || { git commit -qm "brand MRPs $(date -u +%F)"; for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done; }
