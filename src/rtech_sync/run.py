@@ -199,11 +199,20 @@ def run_sync(
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
     if only_new:  # products the bot has never priced (e.g. created after the morning run began)
         eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
-    if kept_only:  # re-judge products no site is asked about (kept prices, brand MRP): no requests
-        eligible = [r for r in eligible
-                    if not any(s in r.urls and s not in cfg.fetch.skip_sources for s in cfg.sources)]
     brand_prices = brand_prices or {}
     brand_only: set = set()  # not checked today, but its brand MRP keeps it priced (no requests)
+    if kept_only:  # re-judge without any request: products no site is asked about (kept prices),
+        # and Request a Quote products that have a fresh brand MRP
+        keep = []
+        for r in eligible:
+            ps = get_price_state(state, r.sku)
+            if not any(s in r.urls and s not in cfg.fetch.skip_sources for s in cfg.sources):
+                keep.append(r)
+            elif (ps.hidden or ps.price is None) and fresh_brand_price(
+                    brand_prices.get(r.sku), today, cfg.pricing.brand_price_days):
+                brand_only.add(r.sku)
+                keep.append(r)
+        eligible = keep
     if cfg.fetch.check_every_days > 1 and not all_products and not only_new and not kept_only:
         todays = [r for r in eligible if checked_today(r, get_price_state(state, r.sku), today,
                                                         cfg.fetch.check_every_days)]

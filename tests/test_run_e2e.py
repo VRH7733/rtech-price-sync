@@ -494,3 +494,6 @@ def test_kept_only_rejudges_products_no_site_is_asked_about_without_any_request(
     d = rr.items[0]["decision"]
     assert d.action == "hide" and d.flags == ["cable_price_per_metre:industrybuying"]
     assert state["items"]["IB-1"]["hidden"] is True
+    state["items"]["M-1"]["hidden"] = True  # a Quote product with a brand MRP joins, still no request
+    rr = go(c, [ib, mog], state, f, woo, publish=True, kept_only=True, brand_prices={"M-1": _bp(1234)})
+    assert f.calls == [] and {it["row"].sku: it["decision"].price for it in rr.items} == {"IB-1": None, "M-1": D(1234)}
