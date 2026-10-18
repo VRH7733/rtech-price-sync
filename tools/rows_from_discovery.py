@@ -124,6 +124,8 @@ def build(brand: str, disc: dict, existing: list) -> list:
                 continue
             if cand.get("fetched") != "yes":
                 continue
+            if not cand["_in_stock"]:  # 18 Oct 2026: 293 of 301 Moglix-only products made from
+                continue  # out-of-stock pages could never get a price; a new product needs one
             if any(passes(r, cand) for r in existing + new if r.variant_hint):
                 continue  # already in the catalogue (often a second listing of the same product)
             title = clean_title(cand)

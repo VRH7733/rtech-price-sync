@@ -63,3 +63,9 @@ def test_fetched_moglix_page_becomes_a_row_unfetched_one_does_not():
     rows = build("Havells", disc, [])
     assert [r.urls for r in rows] == [{"moglix": "m1"}]
     assert rows[0].sku == "RT-HAVE-001" and rows[0].publish == "pending_review"
+
+
+def test_out_of_stock_page_does_not_become_a_new_product():
+    c = cand("moglix", "m1", "Havells Euro II 63A Single Pole C Curve MCB")
+    c["_in_stock"] = False
+    assert build("Havells", {"industrybuying": [], "homerun": [], "moglix": [c]}, []) == []
