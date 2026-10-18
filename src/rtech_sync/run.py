@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import csv
+import json
 import os
 import sys
 import time
@@ -25,7 +26,7 @@ from . import report
 from .catalogue import CatalogueError, load_catalogue, validate
 from .config import Config, ConfigError, load_config
 from .siblings import apply_listing_guard, apply_sibling_guard, seller_listing_only
-from .decision import decide
+from .decision import Decision, decide
 from .fetcher import Fetcher
 from .models import SourceResult
 from .pipeline import evaluate_source
@@ -128,6 +129,39 @@ def record_seen(state: dict, sku: str, results: list, today: date) -> None:
         item["seen"] = seen
 
 
+def fresh_brand_price(bp: Optional[dict], today: date, max_days: int) -> Optional[Decimal]:
+    """The brand's official MRP for a product, if read within max_days (0 = off)."""
+    if not bp or max_days <= 0:
+        return None
+    try:
+        seen, mrp = date.fromisoformat(bp["date"]), Decimal(str(bp["mrp"]))
+    except (KeyError, ValueError, ArithmeticError, TypeError):
+        return None
+    if mrp <= 0 or not 0 <= (today - seen).days <= max_days:
+        return None
+    return mrp.to_integral_value()
+
+
+def apply_brand_prices(items: list, brand_prices: dict, today: date, max_days: int) -> int:
+    """Owner, 18 Oct 2026 (option c): a product no marketplace can price shows the brand's own
+    MRP from its official shop instead of Request a Quote. Only where the shop would otherwise show
+    Request a Quote (hidden, or held with no price live); never instead of a marketplace price,
+    never over a held move. No discount on MRP."""
+    n = 0
+    for it in items:
+        d, ps = it["decision"], it.get("ps")
+        quote = d.action == "hide" or (
+            d.action == "hold" and d.pending is None and (ps is None or ps.hidden or ps.price is None))
+        bp = brand_prices.get(it["row"].sku)
+        mrp = fresh_brand_price(bp, today, max_days)
+        if not quote or mrp is None:
+            continue
+        d.action, d.price, d.refreshed = "publish", mrp, True
+        d.info.append(f"brand_mrp:{bp.get('url', '')}")
+        n += 1
+    return n
+
+
 def checked_today(row, ps, today: date, every: int) -> bool:
     """Each product is checked on one day in `every` (fixed by its SKU, so the shares stay even
     and predictable). A held big move is re-checked the next day, and a product never priced
@@ -152,6 +186,7 @@ def run_sync(
     include_pending: bool = False,
     only_new: bool = False,
     all_products: bool = False,
+    brand_prices: Optional[dict] = None,
 ) -> RunResult:
     started = now()
     deadline = started + cfg.fetch.max_runtime_minutes * 60
@@ -163,9 +198,19 @@ def run_sync(
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
     if only_new:  # products the bot has never priced (e.g. created after the morning run began)
         eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
+    brand_prices = brand_prices or {}
+    brand_only: set = set()  # not checked today, but its brand MRP keeps it priced (no requests)
     if cfg.fetch.check_every_days > 1 and not all_products and not only_new:
-        eligible = [r for r in eligible if checked_today(r, get_price_state(state, r.sku), today,
-                                                          cfg.fetch.check_every_days)]
+        todays = [r for r in eligible if checked_today(r, get_price_state(state, r.sku), today,
+                                                        cfg.fetch.check_every_days)]
+        picked = {r.sku for r in todays}
+        for r in eligible:
+            ps = get_price_state(state, r.sku)
+            if (r.sku not in picked and (ps.hidden or ps.price is None)
+                    and fresh_brand_price(brand_prices.get(r.sku), today, cfg.pricing.brand_price_days)):
+                brand_only.add(r.sku)
+                todays.append(r)
+        eligible = todays
     if only_brands:
         wanted = {b.lower() for b in only_brands}
         eligible = [r for r in eligible if r.brand.lower() in wanted]
@@ -187,7 +232,7 @@ def run_sync(
     for r in eligible:
         if r.manual_price is not None and not cfg.pricing.fetch_for_manual_rows:
             continue
-        if r.sku in seller_only:
+        if r.sku in seller_only or r.sku in brand_only:
             continue
         for s in cfg.sources:
             if s in r.urls and s not in cfg.fetch.skip_sources:
@@ -230,6 +275,10 @@ def run_sync(
     if cfg.pricing.rule == "cheapest":
         apply_sibling_guard(rr.items, cfg.pricing.sibling_ratio)
         apply_listing_guard(rr.items, cfg.pricing.needs_second_site)
+    for it in rr.items:
+        if it["row"].sku in brand_only:  # not fetched today: only its brand MRP can price it
+            it["decision"] = Decision(it["row"].sku, "hide", note="not checked today")
+    brand_priced = apply_brand_prices(rr.items, brand_prices, today, cfg.pricing.brand_price_days)
 
     for it in rr.items:
         r, d, ps = it["row"], it["decision"], it["ps"]
@@ -297,7 +346,7 @@ def run_sync(
         for it in rr.items
         if any(x.status == "not_refreshed" and x.source not in cfg.fetch.skip_sources for x in it["results"])
         and not any(x.usable for x in it["results"])
-        and it["row"].sku not in seller_only
+        and it["row"].sku not in seller_only and it["row"].sku not in brand_only
     )
     rr.stats = {
         "mode": "PUBLISH (live)" if publish else "DRY RUN (nothing changed)",
@@ -307,6 +356,7 @@ def run_sync(
         "rows_changed": len(rr.updates) if not publish else len(rr.changed),
         "rows_held": sum(d.action == "hold" for d in decisions),
         "rows_hidden": sum(d.action == "hide" for d in decisions),
+        "rows_brand_mrp": brand_priced,
         "rows_flagged": len(flagged),
         "rows_not_refreshed": not_refreshed,
         "push_failed": len(rr.publish_report.failed),
@@ -394,6 +444,14 @@ def rotate_history(hist_dir: Path, keep_days: int, today: date) -> None:
         f.unlink()
 
 
+def load_brand_prices(path: Path) -> dict:
+    """{sku: {"mrp", "url", "date"}} written by tools/brand_prices.py; missing or broken = none."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("items", {})
+    except (FileNotFoundError, ValueError, AttributeError):
+        return {}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.yaml")
@@ -435,11 +493,12 @@ def main(argv=None) -> int:
 
     data_dir = Path(args.data)
     state = load_state(data_dir / "latest.json")
+    brand_prices = load_brand_prices(data_dir / "brand_prices.json")
     fetcher = Fetcher(cfg.fetch)
     try:
         rr = run_sync(cfg, rows, state, fetcher, woo, today, args.publish, args.brand, args.limit,
                       include_pending=args.include_pending, only_new=args.only_new,
-                      all_products=args.all_products)
+                      all_products=args.all_products, brand_prices=brand_prices)
     finally:
         # Save state FIRST: it records what is already live. Losing it would make tomorrow's run
         # compare against old prices and old dates.

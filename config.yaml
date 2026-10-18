@@ -53,6 +53,10 @@ pricing:
   # real price for a product stays in the comparison for up to this many days (it is never
   # re-read from anywhere else). The cheapest rule and all guards still apply.
   keep_blocked_days: 30
+  # Owner, 18 Oct 2026 ("option c"): a product with no marketplace price shows the brand's own
+  # MRP from its official shop (Legrand, Havells), read within this many days, instead of Request
+  # a Quote. No discount on MRP. Marketplace prices always win.
+  brand_price_days: 30
   fetch_for_manual_rows: true      # STOP 2: manual_price rows are fetched so you are told when a
                                    # marketplace goes below your price (market_below_manual)
 

@@ -429,3 +429,50 @@ def test_live_rule_keeps_last_industrybuying_price_while_it_is_not_asked():
     rr = go(c, [row], state, FakeFetcher({}), FakeWoo(), publish=True)
     assert rr.items[0]["decision"].price == D(792)  # kept Rs 800 less 1%
     assert rr.stats["rows_not_refreshed"] == 0
+
+
+def _bp(mrp, days_ago=1):
+    return {"mrp": str(mrp), "url": "https://shop.brand.example/p", "date": (TODAY - timedelta(days=days_ago)).isoformat()}
+
+
+def test_brand_mrp_replaces_request_a_quote_but_never_a_marketplace_price():
+    c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    assert c.pricing.brand_price_days == 30
+    no_site = make_row(sku="Q-1", urls={"moglix": "https://www.moglix.com/p/gone"})  # page has no price
+    priced = make_row(sku="P-1", urls={"moglix": "https://www.moglix.com/p/a"})
+    bps = {"Q-1": _bp(1499.4), "P-1": _bp(5000)}
+    rr = go(c, [no_site, priced], {"version": 1, "items": {}}, FakeFetcher(pages(1000, None, None)), FakeWoo(),
+            publish=True, brand_prices=bps)
+    d = {it["row"].sku: it["decision"] for it in rr.items}
+    assert d["Q-1"].action == "publish" and d["Q-1"].price == D(1499)  # MRP, no 1% off
+    assert "brand_mrp:https://shop.brand.example/p" in d["Q-1"].info
+    assert d["P-1"].price == D(990)  # marketplace wins
+    assert rr.stats["rows_brand_mrp"] == 1
+    old = {"Q-1": _bp(1499, days_ago=31)}
+    rr = go(c, [no_site], {"version": 1, "items": {}}, FakeFetcher({}), FakeWoo(), publish=False, brand_prices=old)
+    assert rr.items[0]["decision"].action != "publish"  # too old: stays Request a Quote
+
+
+def test_brand_mrp_prices_a_quote_product_the_same_day_without_fetching_it():
+    c = live_cfg()  # 3-day rotation on
+    rows = [make_row(sku=f"RT-Q-{i:03d}", wc_product_id=300 + i, wc_variation_id=None) for i in range(30)]
+    seen = (TODAY - timedelta(days=1)).isoformat()
+    state = {"version": 1, "items": {r.sku: {"first_seen": seen, "last_ok": seen, "price": "1000", "hidden": True}
+                                     for r in rows}}
+    f = FakeFetcher({})
+    rr = go(c, rows, state, f, FakeWoo(), publish=True, brand_prices={r.sku: _bp(777) for r in rows})
+    assert len(rr.items) == 30 and all(it["decision"].price == D(777) for it in rr.items)
+    assert len(f.calls) < 30  # only today's third is fetched
+    assert state["items"]["RT-Q-005"]["hidden"] is False
+    rr = go(c, rows, state, f, FakeWoo(), publish=False, today=TODAY + timedelta(days=1),
+            brand_prices={r.sku: _bp(777) for r in rows})
+    assert len(rr.items) < 30  # once shown, back to the normal rotation
+
+
+def test_broken_brand_price_file_means_no_brand_prices(tmp_path):
+    (tmp_path / "brand_prices.json").write_text("{not json", encoding="utf-8")
+    assert runmod.load_brand_prices(tmp_path / "brand_prices.json") == {}
+    assert runmod.load_brand_prices(tmp_path / "missing.json") == {}
+    assert runmod.fresh_brand_price({"mrp": "abc", "date": "2026-10-13"}, TODAY, 30) is None
+    assert runmod.fresh_brand_price({"mrp": "0", "date": "2026-10-13"}, TODAY, 30) is None
+    assert runmod.fresh_brand_price({"mrp": "10", "date": "2026-10-20"}, TODAY, 30) is None  # future date

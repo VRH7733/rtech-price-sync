@@ -40,6 +40,9 @@ class PricingCfg:
     stale_days: int = 3
     # a site that refuses us (blocked) keeps its last real price for this many days (0 = off)
     keep_blocked_days: int = 0
+    # a product no marketplace prices shows its brand's official MRP read within this many days
+    # (data/brand_prices.json, tools/brand_prices.py). 0 = off.
+    brand_price_days: int = 0
     fetch_for_manual_rows: bool = False
 
 
@@ -131,6 +134,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
         default_gst_pct=_dec(p, "default_gst_pct", Decimal("18")),
         stale_days=int(p.get("stale_days", 3)),
         keep_blocked_days=int(p.get("keep_blocked_days", 0)),
+        brand_price_days=int(p.get("brand_price_days", 0)),
         fetch_for_manual_rows=bool(p.get("fetch_for_manual_rows", False)),
     )
     fetch = FetchCfg(
