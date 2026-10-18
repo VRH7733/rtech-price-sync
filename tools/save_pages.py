@@ -23,13 +23,17 @@ def main(argv):
     cfg.fetch.require_contact_email()
     f = Fetcher(cfg.fetch)
     out.mkdir(parents=True, exist_ok=True)
+    lines = []
     for u in urls:
         r = f.get(u)
         p = urlparse(u)
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{p.netloc}__{p.path.strip('/')}")[:150] + ".html"
         print(f"{r.status} {r.http} {u}")
+        lines.append(f"{r.status} {r.http} {r.detail} {u} -> {name if r.text else '-'}")
         if r.text:
             (out / name).write_text(r.text, encoding="utf-8")
+    with open(out / "_status.txt", "a", encoding="utf-8") as fh:  # Actions logs are not readable here
+        fh.write("\n".join(lines) + "\n")
     return 0
 
 
