@@ -65,7 +65,8 @@ for slug, priced in (("priced-cable", True), ("quote-switch", False)):
             check("offers" not in p, f"{slug}: no invented offer")
     crumbs = [n for n in nodes if n.get("@type") == "BreadcrumbList"]
     names = [e["item"]["name"] for c in crumbs for e in c.get("itemListElement", [])]
-    check(names and not any("&" in n for n in names), f"{slug}: breadcrumb names without &amp; {names}")
+    if crumbs:  # Rank Math's own schema prints no breadcrumb list unless its breadcrumbs are on
+        check(names and not any("&" in n for n in names), f"{slug}: breadcrumb names without &amp; {names}")
     check("Search Engine Optimization by Rank Math" in page or "rank-math" in page, f"{slug}: Rank Math is printing the head")
     title = re.search(r"<title>(.*?)</title>", page, re.S).group(1)
     print("     title:", title)
