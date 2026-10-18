@@ -160,6 +160,14 @@ Certain matches only (model/catalogue number), quality check (>= 600 px, not ban
   only small range banners for wires (KEI/RR Kabel ~500x300), Polycab per-SKU wire photos are 400 px,
   GM 600x337. 79 WEB- products: 35 current images pass, 23 fail (mostly 200 px Polycab), no certain match.
 - Theme: Blocksy gallery was 3:4 with object-fit cover (cropped square photos); owner set 1/1.
+- 18 Oct 2026 (owner: "complete website today", approved in the photos thread): bar lowered to 400 px;
+  wire route (same range, size, cores, colour; another coil length as fallback) on Polycab's per-SKU
+  pages; padded range photos (white square, release `brand-range-images`) for KEI/RR Kabel wires;
+  Havells by image-sitemap product name only when colour, finish and lamp base match (fans need every
+  descriptive word). Verified live (run 39120484665): 417 added, 0 failed; 927 products now have an
+  official photo (Legrand 418, Havells 183, Polycab 177, KEI 124, RR Kabel 25). Seen on the shop:
+  KEI Banfire range photo padded correctly; Polycab shows the same box art for every size (the box on
+  a 6 sq mm product reads 2.5 sq mm), the owner was told. 4,285 still have none.
 
 ## Still NOT verified
 
