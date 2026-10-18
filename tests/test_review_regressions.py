@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TODAY = date(2026, 10, 14)
 CFG = load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
 # day-by-day profile (check every product daily, hide after 3 missed days); see test_run_e2e
-CFG = dataclasses.replace(CFG, fetch=dataclasses.replace(CFG.fetch, check_every_days=1),
-                          pricing=dataclasses.replace(CFG.pricing, stale_days=3))
+CFG = dataclasses.replace(CFG, fetch=dataclasses.replace(CFG.fetch, check_every_days=1, skip_sources=()),
+                          pricing=dataclasses.replace(CFG.pricing, stale_days=3, default_markup_pct=D(0)))
 # the earlier 5%-agreement rule, still supported (config pricing.rule: spread)
 SPREAD = dataclasses.replace(CFG.pricing, rule="spread", big_move_pct=D(15))
 
@@ -210,7 +210,7 @@ def test_state_is_saved_even_if_report_writing_fails(tmp_path, monkeypatch):
     code = runmod.main(["--config", str(ROOT / "config.yaml"), "--catalogue", str(cat), "--data", str(data),
                         "--publish", "--today", "2026-10-14"])
     assert code == 0
-    assert json.loads((data / "latest.json").read_text())["items"]["S1"]["price"] == "1000"
+    assert json.loads((data / "latest.json").read_text())["items"]["S1"]["price"] == "990"  # live -1%
 
 
 def test_rotate_history_survives_empty_old_file(tmp_path):

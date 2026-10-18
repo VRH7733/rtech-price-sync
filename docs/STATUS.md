@@ -2,6 +2,9 @@
 
 ## LIVE since 15 Oct 2026 (owner's approvals typed in the project thread)
 
+- 18 Oct (owner): Moglix and HomeRun only (fetch.skip_sources: industrybuying), price = cheapest x 0.99
+  rounded up (default_markup_pct -1). IB's last real prices stay up to 30 days (keep_blocked_days).
+
 - Rule: publish the CHEAPEST of HomeRun, Moglix, IndustryBuying every morning (starts 01:00 IST, backup
   03:00 IST if the first did not fire; the 15 Oct 23:30 UTC schedule never fired), one site is
   enough; LiteSpeed purges /product/ etc. at 07:30 IST (Harshi, 16 Oct); `shop-check.yml`

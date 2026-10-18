@@ -43,7 +43,9 @@ pricing:
   # such a listing gives Request a Quote, not a price.
   needs_second_site:
     industrybuying: "-ELE."
-  default_markup_pct: 0
+  # Owner, 18 Oct 2026: "get the cheapest of moglix and homerun, for that add one % dis":
+  # published price = cheapest x 0.99, rounded up to the rupee.
+  default_markup_pct: -1
   default_gst_pct: 18
   stale_days: 6                    # no validated price for this many days => hide price (two
                                    # missed 3-day checks in a row; one miss keeps the price)
@@ -59,6 +61,9 @@ fetch:
   # three days ... part of checking everyday". Each product is checked once every 3 days (a
   # third of the catalogue each morning, chosen by SKU), slowly, with a hard cap per site.
   check_every_days: 3
+  # Owner, 18 Oct 2026: "lets use moglix and homerun only, we dont waste time on industry buy".
+  # IndustryBuying is not asked at all; its last real prices stay for keep_blocked_days.
+  skip_sources: [industrybuying]
   min_delay_seconds: 6             # per host, across everything in the process
   timeout_seconds: 25
   retries: 1                       # one backoff retry on 429/5xx

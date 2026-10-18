@@ -25,8 +25,10 @@ def cfg():
     c = load_config(ROOT / "config.yaml", env={"RTECH_CONTACT_EMAIL": "shop@example.com"})
     # these tests follow ONE product day by day: check it every day, hide after 3 missed days
     # (the live 3-day rotation is tested in test_rotation_*)
-    c = dataclasses.replace(c, fetch=dataclasses.replace(c.fetch, check_every_days=1),
-                            pricing=dataclasses.replace(c.pricing, stale_days=3))
+    # also all three sites asked and no discount (the live -1% and IndustryBuying stop are
+    # tested in test_live_rule_*)
+    c = dataclasses.replace(c, fetch=dataclasses.replace(c.fetch, check_every_days=1, skip_sources=()),
+                            pricing=dataclasses.replace(c.pricing, stale_days=3, default_markup_pct=D(0)))
     # pages in these tests say "Inclusive of all taxes", but make the assumption explicit too
     return c
 
@@ -407,3 +409,23 @@ def test_kept_price_expires_after_keep_blocked_days_and_can_be_switched_off(cfg)
 
 def test_live_config_keeps_blocked_prices_30_days():
     assert live_cfg().pricing.keep_blocked_days == 30
+
+
+def test_live_rule_cheapest_of_moglix_and_homerun_less_one_percent_and_no_industrybuying():
+    c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    assert c.fetch.skip_sources == ("industrybuying",) and c.pricing.default_markup_pct == D(-1)
+    f = FakeFetcher(pages(1000, 500, 1020))  # IB would be cheaper, but it is not asked
+    rr = go(c, [make_row()], {"version": 1, "items": {}}, f, FakeWoo(), publish=True)
+    assert not any("industrybuying" in u for u in f.calls)
+    assert rr.items[0]["decision"].price == D(990)  # Rs 1,000 x 0.99
+
+
+def test_live_rule_keeps_last_industrybuying_price_while_it_is_not_asked():
+    c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    seen = (TODAY - timedelta(days=5)).isoformat()
+    row = make_row(urls={"industrybuying": "https://www.industrybuying.com/p/b"})
+    state = {"version": 1, "items": {"PC-1": {"first_seen": seen, "last_ok": seen, "price": "800",
+                                              "sources": {"industrybuying": "800"}}}}
+    rr = go(c, [row], state, FakeFetcher({}), FakeWoo(), publish=True)
+    assert rr.items[0]["decision"].price == D(792)  # kept Rs 800 less 1%
+    assert rr.stats["rows_not_refreshed"] == 0

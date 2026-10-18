@@ -1,0 +1,44 @@
+name: save-pages
+
+# Manual: saves a few public pages (robots.txt obeyed, polite pacing) to the PRIVATE data repo
+# under samples/<date>/, so parsers are written against real pages.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "space-separated page URLs (at most 20)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+      - name: Save pages
+        env:
+          RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+          URLS: ${{ github.event.inputs.urls }}
+        run: |
+          set -f
+          n=$(echo $URLS | wc -w); [ "$n" -le 20 ] || { echo "::error::at most 20 URLs"; exit 1; }
+          python tools/save_pages.py "pd/samples/$(TZ=Asia/Kolkata date +%F)" $URLS
+      - name: Commit
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add samples
+          git diff --cached --quiet && echo "nothing saved" || { git commit -qm "samples $(date -u +%F)"; for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done; }

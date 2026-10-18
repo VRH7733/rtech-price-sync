@@ -93,8 +93,9 @@ def last_seen(item: dict) -> dict:
     return seen
 
 
-def keep_blocked_prices(results: list, item: dict, stopped: dict, today: date, max_days: int) -> list:
-    """While a site refuses us (blocked, or not asked because it kept refusing), use its last
+def keep_blocked_prices(results: list, item: dict, stopped, today: date, max_days: int) -> list:
+    """While a site refuses us (blocked, or not asked because it kept refusing or is no longer
+    used: `stopped`), use its last
     real price for this product if it is at most max_days old. Changes results in place;
     returns [(source, date of the kept price)]."""
     if max_days <= 0:
@@ -189,7 +190,7 @@ def run_sync(
         if r.sku in seller_only:
             continue
         for s in cfg.sources:
-            if s in r.urls:
+            if s in r.urls and s not in cfg.fetch.skip_sources:
                 tasks.append((r, s, r.urls[s]))
     stopped: dict = {}
     fetched = _fetch_all(tasks, fetcher, deadline, now, stopped)
@@ -205,7 +206,8 @@ def run_sync(
                 SourceResult(s, "error", url=r.urls.get(s, ""), detail="internal: " + internal_error)
                 for s in cfg.sources
             ]
-        kept = keep_blocked_prices(results, state["items"].get(r.sku, {}), stopped, today,
+        kept = keep_blocked_prices(results, state["items"].get(r.sku, {}),
+                                   set(stopped) | set(cfg.fetch.skip_sources), today,
                                    cfg.pricing.keep_blocked_days)
         # pilot dry run: judge a pending row as if it were approved (nothing is published)
         as_row = dataclasses.replace(r, publish="yes") if include_pending and r.publish == "pending_review" else r
@@ -293,7 +295,7 @@ def run_sync(
     not_refreshed = sum(
         1
         for it in rr.items
-        if any(x.status == "not_refreshed" for x in it["results"])
+        if any(x.status == "not_refreshed" and x.source not in cfg.fetch.skip_sources for x in it["results"])
         and not any(x.usable for x in it["results"])
         and it["row"].sku not in seller_only
     )
