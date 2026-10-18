@@ -213,21 +213,29 @@ add_filter(
 
 /* ---------- WooCommerce structured data ---------- */
 
+/**
+ * Text for JSON-LD. WooCommerce HTML-escapes its JSON-LD on output, so a "&" reaches Google and AI
+ * readers as the literal text "&amp;" (on the live site even "&amp;amp;"): write "and" instead.
+ */
+function rtech_ai_ld_text( $text ) {
+	return trim( preg_replace( '/\s*&\s*/', ' and ', rtech_ai_plain( $text ) ) );
+}
+
 /** One Product node: name, sku, brand, category, clean description, image, offer details. */
 function rtech_ai_product_markup( $markup, $product ) {
 	if ( ! is_array( $markup ) || ! $product ) {
 		return $markup;
 	}
 	$s = rtech_ai_settings();
-	$markup['name']        = rtech_ai_plain( $product->get_name() );
-	$markup['description'] = rtech_ai_product_description( $product );
+	$markup['name']        = rtech_ai_ld_text( $product->get_name() );
+	$markup['description'] = rtech_ai_ld_text( rtech_ai_product_description( $product ) );
 	$brand = rtech_ai_brand( $product );
 	if ( $brand && empty( $markup['brand'] ) ) {
-		$markup['brand'] = array( '@type' => 'Brand', 'name' => $brand );
+		$markup['brand'] = array( '@type' => 'Brand', 'name' => rtech_ai_ld_text( $brand ) );
 	}
 	$cat = rtech_ai_category( $product );
 	if ( $cat ) {
-		$markup['category'] = $cat;
+		$markup['category'] = rtech_ai_ld_text( $cat );
 	}
 	if ( ! empty( $markup['offers'] ) && is_array( $markup['offers'] ) ) {
 		foreach ( $markup['offers'] as $i => $offer ) {
@@ -259,14 +267,14 @@ add_filter(
 	2
 );
 
-/** Breadcrumbs: "Wires &amp;amp; Cables" -> "Wires & Cables". */
+/** Breadcrumbs: "Wires &amp;amp; Cables" -> "Wires and Cables". */
 add_filter(
 	'woocommerce_structured_data_breadcrumblist',
 	function ( $markup ) {
 		if ( ! empty( $markup['itemListElement'] ) && is_array( $markup['itemListElement'] ) ) {
 			foreach ( $markup['itemListElement'] as $i => $el ) {
 				if ( isset( $el['item']['name'] ) ) {
-					$markup['itemListElement'][ $i ]['item']['name'] = rtech_ai_plain( $el['item']['name'] );
+					$markup['itemListElement'][ $i ]['item']['name'] = rtech_ai_ld_text( $el['item']['name'] );
 				}
 			}
 		}

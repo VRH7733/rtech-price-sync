@@ -50,7 +50,7 @@ for slug, priced in (("priced-cable", True), ("quote-switch", False)):
         check("HavellsSize" not in p.get("description", "") and "Brand:" not in p.get("description", ""),
               f"{slug}: clean description")
         check(bool(p.get("category")), f"{slug}: category set")
-        check("&amp;" not in p.get("category", ""), f"{slug}: category decoded")
+        check("&" not in p.get("category", "") and " and " in p.get("category", ""), f"{slug}: category reads 'and', no &amp;")
         if priced:
             o = p.get("offers", [{}])[0]
             check(o.get("itemCondition", "").endswith("NewCondition"), f"{slug}: itemCondition")
@@ -59,7 +59,8 @@ for slug, priced in (("priced-cable", True), ("quote-switch", False)):
             check("offers" not in p, f"{slug}: no invented offer")
     crumbs = [n for n in nodes if n.get("@type") == "BreadcrumbList"]
     names = [e["item"]["name"] for c in crumbs for e in c.get("itemListElement", [])]
-    check(names and not any("&amp;" in n for n in names), f"{slug}: breadcrumb names decoded {names}")
+    check(names and not any("&" in n for n in names), f"{slug}: breadcrumb names without &amp; {names}")
+    check("Search Engine Optimization by Rank Math" in page or "rank-math" in page, f"{slug}: Rank Math is printing the head")
     title = re.search(r"<title>(.*?)</title>", page, re.S).group(1)
     print("     title:", title)
     check(title.endswith("| RTechElectricals"), f"{slug}: title ends with | RTechElectricals")

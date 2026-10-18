@@ -40,6 +40,10 @@ jobs:
           wp core install --url=http://127.0.0.1:8080 --title=rtechelectricals --admin_user=admin --admin_password=admin --admin_email=test@example.com --skip-email --quiet
           wp rewrite structure '/%postname%/' --quiet
           wp plugin install woocommerce seo-by-rank-math --activate --quiet
+          # Rank Math prints nothing on the front end until its setup wizard has run once
+          wp option update rank_math_wizard_completed 1
+          wp option update rank_math_registration_skip 1
+          wp option list --search='rank*' --fields=option_name | head -40
           wp plugin list --fields=name,version,status
           mkdir -p wp-content/mu-plugins
           cp ../wordpress/tests/strip_quote_schema.php wp-content/mu-plugins/
@@ -57,6 +61,10 @@ jobs:
           sleep 3
           touch wp-content/debug.log
           python3 ../wordpress/tests/check_pages.py http://127.0.0.1:8080 wp-content/debug.log
+
+      - name: Show the product page head
+        if: always()
+        run: curl -s http://127.0.0.1:8080/product/priced-cable/ | sed -n '/<head/,/<\/head>/p' | grep -iE 'rank|<title|description|og:' | head -40 || true
 
       - name: Show the PHP log
         if: always()
