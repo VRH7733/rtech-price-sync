@@ -476,3 +476,21 @@ def test_broken_brand_price_file_means_no_brand_prices(tmp_path):
     assert runmod.fresh_brand_price({"mrp": "abc", "date": "2026-10-13"}, TODAY, 30) is None
     assert runmod.fresh_brand_price({"mrp": "0", "date": "2026-10-13"}, TODAY, 30) is None
     assert runmod.fresh_brand_price({"mrp": "10", "date": "2026-10-20"}, TODAY, 30) is None  # future date
+
+
+def test_kept_only_rejudges_products_no_site_is_asked_about_without_any_request():
+    c = live_cfg()
+    seen = (TODAY - timedelta(days=2)).isoformat()
+    ib = make_row(sku="IB-1", title="KEI 400 Sq.mm 1 Core HRFR Flexible Cable Black (100 m)", pack_size="100 m",
+                  variant_hint="400sqmm", urls={"industrybuying": "https://www.industrybuying.com/p/b"})
+    mog = make_row(sku="M-1")
+    state = {"version": 1, "items": {
+        "IB-1": {"first_seen": seen, "last_ok": seen, "price": "4060805", "sources": {"industrybuying": "4101823"}},
+        "M-1": {"first_seen": seen, "last_ok": seen, "price": "990"}}}
+    f = FakeFetcher({})
+    woo = FakeWoo()
+    rr = go(c, [ib, mog], state, f, woo, publish=True, kept_only=True)
+    assert f.calls == [] and [it["row"].sku for it in rr.items] == ["IB-1"]
+    d = rr.items[0]["decision"]
+    assert d.action == "hide" and d.flags == ["cable_price_per_metre:industrybuying"]
+    assert state["items"]["IB-1"]["hidden"] is True

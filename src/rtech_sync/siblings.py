@@ -106,3 +106,40 @@ def seller_listing_only(row, sources, patterns) -> Optional[str]:
         return None
     pat = (patterns or {}).get(have[0])
     return have[0] if pat and pat in row.urls[have[0]] else None
+
+
+def apply_cable_guard(items: list, max_per_sqmm_metre: Decimal) -> list:
+    """A single-site cable price is not published when it is impossible for the copper in it:
+    more than max_per_sqmm_metre rupees per sq mm per core per metre. On 18 Oct 2026, 394 cable
+    prices confirmed by Moglix/HomeRun sat at Rs 17-26 (all under Rs 39, speaker cable), while
+    357 IndustryBuying-only ones sat at Rs 50-250 (median ~90, e.g. 100 m of KEI 400 sq mm at
+    Rs 40.6 lakh). A single-site cable with no known length (no pack size) cannot be checked and
+    is not published either (Havells 61-core control cable at Rs 1.36 crore). Request a Quote,
+    flags "cable_price_per_metre:<site>" / "cable_length_unknown:<site>"."""
+    if not max_per_sqmm_metre or max_per_sqmm_metre <= 0:
+        return []
+    changed = []
+    for it in items:
+        d, row = it["decision"], it["row"]
+        usable = [x for x in it["results"] if x.usable]
+        if d.action != "publish" or d.price is None or len(usable) != 1:
+            continue
+        title = normalise_text(row.title)
+        sq = _SQMM.search(title)
+        if not sq or ("wire" not in title and "cable" not in title):
+            continue
+        src = usable[0].source
+        length = _LEN.search(normalise_text(row.pack_size or ""))
+        cores = _CORES.search(title)
+        if not length:
+            flag, note = f"cable_length_unknown:{src}", "cable price with no known length"
+        else:
+            per = d.price / (Decimal(sq.group(1)) * int(cores.group(1) if cores else 1) * Decimal(length.group(1)))
+            if per <= max_per_sqmm_metre:
+                continue
+            flag, note = f"cable_price_per_metre:{src}", f"Rs {per:.0f} per sq mm per metre"
+        d.action, d.price, d.pending, d.refreshed = "hide", None, None, False
+        d.flags.append(flag)
+        d.note = note
+        changed.append(row.sku)
+    return changed

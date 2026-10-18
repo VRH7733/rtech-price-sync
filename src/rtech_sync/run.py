@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from . import report
 from .catalogue import CatalogueError, load_catalogue, validate
 from .config import Config, ConfigError, load_config
-from .siblings import apply_listing_guard, apply_sibling_guard, seller_listing_only
+from .siblings import apply_cable_guard, apply_listing_guard, apply_sibling_guard, seller_listing_only
 from .decision import Decision, decide
 from .fetcher import Fetcher
 from .models import SourceResult
@@ -187,6 +187,7 @@ def run_sync(
     only_new: bool = False,
     all_products: bool = False,
     brand_prices: Optional[dict] = None,
+    kept_only: bool = False,
 ) -> RunResult:
     started = now()
     deadline = started + cfg.fetch.max_runtime_minutes * 60
@@ -198,9 +199,12 @@ def run_sync(
     eligible = [r for r in rows if r.mode == "priced" and r.publish in ok_publish]
     if only_new:  # products the bot has never priced (e.g. created after the morning run began)
         eligible = [r for r in eligible if get_price_state(state, r.sku).first_seen is None]
+    if kept_only:  # re-judge products no site is asked about (kept prices, brand MRP): no requests
+        eligible = [r for r in eligible
+                    if not any(s in r.urls and s not in cfg.fetch.skip_sources for s in cfg.sources)]
     brand_prices = brand_prices or {}
     brand_only: set = set()  # not checked today, but its brand MRP keeps it priced (no requests)
-    if cfg.fetch.check_every_days > 1 and not all_products and not only_new:
+    if cfg.fetch.check_every_days > 1 and not all_products and not only_new and not kept_only:
         todays = [r for r in eligible if checked_today(r, get_price_state(state, r.sku), today,
                                                         cfg.fetch.check_every_days)]
         picked = {r.sku for r in todays}
@@ -275,6 +279,7 @@ def run_sync(
     if cfg.pricing.rule == "cheapest":
         apply_sibling_guard(rr.items, cfg.pricing.sibling_ratio)
         apply_listing_guard(rr.items, cfg.pricing.needs_second_site)
+        apply_cable_guard(rr.items, cfg.pricing.cable_max_per_sqmm_metre)
     for it in rr.items:
         if it["row"].sku in brand_only:  # not fetched today: only its brand MRP can price it
             it["decision"] = Decision(it["row"].sku, "hide", note="not checked today")
@@ -462,6 +467,8 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, help="limit number of rows (testing)")
     ap.add_argument("--only-new", action="store_true", help="only rows the bot has never priced")
     ap.add_argument("--all-products", action="store_true", help="check every product, not today's share")
+    ap.add_argument("--kept-only", action="store_true",
+                    help="only products no site is asked about (re-judge kept prices; sends no requests)")
     ap.add_argument("--today", help="override date YYYY-MM-DD (testing)")
     ap.add_argument("--include-pending", action="store_true",
                     help="dry run only: also evaluate publish=pending_review rows (pilot)")
@@ -498,7 +505,8 @@ def main(argv=None) -> int:
     try:
         rr = run_sync(cfg, rows, state, fetcher, woo, today, args.publish, args.brand, args.limit,
                       include_pending=args.include_pending, only_new=args.only_new,
-                      all_products=args.all_products, brand_prices=brand_prices)
+                      all_products=args.all_products, brand_prices=brand_prices,
+                      kept_only=args.kept_only)
     finally:
         # Save state FIRST: it records what is already live. Losing it would make tomorrow's run
         # compare against old prices and old dates.

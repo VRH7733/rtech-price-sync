@@ -82,3 +82,27 @@ def test_config_loads_the_seller_listing_rule():
     from rtech_sync.config import load_config
     cfg = load_config(Path(__file__).resolve().parent.parent / "config.yaml", env={"RTECH_CONTACT_EMAIL": "x@example.com"})
     assert cfg.pricing.needs_second_site == {"industrybuying": "-ELE."} and cfg.pricing.sibling_ratio == 2
+
+
+def test_cable_price_impossible_for_its_copper_becomes_quote():
+    from rtech_sync.siblings import apply_cable_guard
+    kei = "KEI 400 Sq.mm 1 Core HRFR Flexible Cable Black (100 m)"
+    items = [item("KEI-332", kei, {"industrybuying": "4060805"}, pack="100 m"),  # Rs 101 per sq mm-m
+             item("OK", wire("Red"), {"homerun": "4400"}),  # 2.5 sq mm x 90 m: Rs 19.6
+             item("SPK", "Finolex Speaker Cable, 100m 1.5 Sqmm", {"moglix": "5841"}, pack="100 m"),  # Rs 38.9
+             item("CTL", "Havells Unarmoured 2XY LT Control Cable 61 Core 2.5 Sq.mm",
+                  {"industrybuying": "13569500"}, pack=""),
+             item("TWO", kei, {"industrybuying": "4060805", "moglix": "4100000"}, pack="100 m"),
+             item("PLATE", "Legrand 6 Module Plate", {"industrybuying": "999999"}, pack="")]
+    assert apply_cable_guard(items, D(50)) == ["KEI-332", "CTL"]
+    assert items[0]["decision"].flags == ["cable_price_per_metre:industrybuying"]
+    assert items[3]["decision"].flags == ["cable_length_unknown:industrybuying"]
+    assert all(it["decision"].action == "publish" for it in items[1:3] + items[4:])  # two sites: outlier guard's job
+    assert apply_cable_guard([item("X", kei, {"industrybuying": "4060805"}, pack="100 m")], D(0)) == []
+
+
+def test_live_config_has_the_cable_guard():
+    from pathlib import Path
+    from rtech_sync.config import load_config
+    cfg = load_config(Path(__file__).resolve().parents[1] / "config.yaml", env={"RTECH_CONTACT_EMAIL": "a@b.co"})
+    assert cfg.pricing.cable_max_per_sqmm_metre == D(50)

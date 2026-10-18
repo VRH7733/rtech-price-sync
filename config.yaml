@@ -43,6 +43,10 @@ pricing:
   # such a listing gives Request a Quote, not a price.
   needs_second_site:
     industrybuying: "-ELE."
+  # 18 Oct 2026: cable prices confirmed by Moglix/HomeRun are Rs 17-39 per sq mm per core per
+  # metre; most IndustryBuying-only ones were Rs 50-250 (4-5x, up to Rs 1.36 crore for one drum).
+  # A single-site cable above this, or with no known length, shows Request a Quote, flagged.
+  cable_max_per_sqmm_metre: 50
   # Owner, 18 Oct 2026: "get the cheapest of moglix and homerun, for that add one % dis":
   # published price = cheapest x 0.99, rounded up to the rupee.
   default_markup_pct: -1
