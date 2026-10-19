@@ -127,6 +127,9 @@ def section(lines, name, url, status, headers, body=None, info=None, full_ld=Fal
             lines += ["", "```json", json.dumps(info["_blocks"], indent=1, ensure_ascii=False)[:12000], "```"]
     if raw and body is not None:
         lines += ["", "```", body[:6000], "```"]
+    elif status != 200 and body:
+        # a refusal page usually names who refused (host firewall, CDN, security plugin)
+        lines += ["", "refusal body (start):", "```", re.sub(r"\s+", " ", body)[:1500], "```"]
     lines.append("")
     print(f"{name}: HTTP {status}")
 
@@ -165,6 +168,12 @@ def main(report_path):
     s, h, b = get(BASE + "/shop/")
     section(lines, "Shop page", BASE + "/shop/", s, h, b, describe(b) if s == 200 else None)
 
+    # The public Store API and core REST routes the shop checks use, recorded one by one.
+    for path in ("/wp-json/wc/store/v1/products?per_page=1", "/wp-json/wp/v2/types",
+                 "/wp-json/wc/store/v1/products/categories?per_page=1"):
+        s, h, b = get(BASE + path)
+        section(lines, f"REST {path}", BASE + path, s, h, b)
+
     # Product pages: 3 with a price and 3 without, from the public Store API.
     picks = []
     for params, want in (("on_sale=false&orderby=price&order=desc", "priced"), ("orderby=date&order=asc", "any")):
@@ -178,6 +187,11 @@ def main(report_path):
                 picks.append((p["permalink"], True, p.get("sku")))
             if want == "any" and not priced and sum(1 for x in picks if not x[1]) < 3:
                 picks.append((p["permalink"], False, p.get("sku")))
+    if not picks:  # Store API refused: take product pages from the sitemap instead
+        s, h, b = get(BASE + "/product-sitemap1.xml")
+        section(lines, "/product-sitemap1.xml", BASE + "/product-sitemap1.xml", s, h, b)
+        for url in (re.findall(r"<loc>([^<]+/product/[^<]+)</loc>", b) if s == 200 else [])[:4]:
+            picks.append((url, None, "from sitemap"))
     # a category page too
     s, h, b = get(f"{BASE}/wp-json/wc/store/v1/products/categories?per_page=5&orderby=count&order=desc")
     if s == 200:
@@ -188,7 +202,7 @@ def main(report_path):
                     describe(b) if s == 200 else None)
     for url, priced, sku in picks:
         s, h, b = get(url)
-        section(lines, f"Product page ({'priced' if priced else 'Request a Quote'}, {sku})", url, s, h, b,
+        section(lines, f"Product page ({ {True: 'priced', False: 'Request a Quote', None: 'sitemap'}[priced] }, {sku})", url, s, h, b,
                 describe(b) if s == 200 else None, full_ld=True)
 
     os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
