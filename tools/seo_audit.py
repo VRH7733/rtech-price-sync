@@ -169,7 +169,8 @@ def main(report_path):
     section(lines, "Shop page", BASE + "/shop/", s, h, b, describe(b) if s == 200 else None)
 
     # The public Store API and core REST routes the shop checks use, recorded one by one.
-    for path in ("/wp-json/wc/store/v1/products?per_page=1", "/wp-json/wp/v2/types",
+    for path in ("/wp-json/wc/store/v1/products?per_page=1", "/wp-json/wc/store/v1/products?per_page=100&page=1",
+                 "/wp-json/wc/store/v1/products?per_page=100&page=2", "/wp-json/wp/v2/types",
                  "/wp-json/wc/store/v1/products/categories?per_page=1"):
         s, h, b = get(BASE + path)
         section(lines, f"REST {path}", BASE + path, s, h, b)
