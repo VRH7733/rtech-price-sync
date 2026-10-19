@@ -44,3 +44,31 @@ def test_verdict():
     assert cs.verdict(Decimal(5), Decimal(5), False) == "ok_price"
     assert cs.verdict(Decimal(5), Decimal(6), False) == "wrong_price"
     assert cs.verdict(Decimal(5), None, True) == "missing_price"
+
+
+def test_refusal_is_logged_and_tried_once_more(monkeypatch, capsys):
+    import io
+    import urllib.error
+    calls = []
+
+    def fake_open(req, timeout=60):
+        calls.append(req.full_url)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {"Server": "hcdn", "X-Other": "x"},
+                                         io.BytesIO(b"<html>Access denied</html>"))
+
+        class R(io.BytesIO):
+            headers = {"X-WP-TotalPages": "1"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        return R(b"[]")
+    monkeypatch.setattr(cs.urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(cs.time, "sleep", lambda s: None)
+    body, _ = cs.get("https://shop.example/x")
+    assert body == "[]" and len(calls) == 2
+    err = capsys.readouterr().err
+    assert "HTTP 403" in err and "hcdn" in err and "Access denied" in err and "x-other" not in err

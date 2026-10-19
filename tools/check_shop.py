@@ -20,6 +20,7 @@ import random
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from decimal import Decimal, InvalidOperation
 
@@ -75,10 +76,26 @@ def verdict(want, got_price, got_quote) -> str:
     return "ok_price" if got_price == want else "wrong_price"
 
 
-def get(url):
+HEADERS_KEPT = ("server", "platform", "x-litespeed-cache", "cf-ray", "content-type", "x-powered-by",
+                "retry-after", "x-turbo-charged-by")
+RETRY_PAUSE_SECONDS = 30
+
+
+def get(url, retry=True):
+    """Our own shop. A refusal is logged (status, server headers, start of the body) and tried
+    once more after a pause; a second refusal stops the check."""
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read().decode("utf-8", "replace"), resp.headers
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read().decode("utf-8", "replace"), resp.headers
+    except urllib.error.HTTPError as err:
+        heads = {k.lower(): v for k, v in err.headers.items() if k.lower() in HEADERS_KEPT}
+        body = err.read().decode("utf-8", "replace")[:1500]
+        print(f"HTTP {err.code} for {url}\nheaders: {heads}\nbody: {body}", file=sys.stderr)
+        if not retry:
+            raise
+        time.sleep(RETRY_PAUSE_SECONDS)
+        return get(url, retry=False)
 
 
 def store_products():
