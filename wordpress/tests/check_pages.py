@@ -123,7 +123,7 @@ d = html.unescape(meta(brand, "description") or "")
 print("     brand title:", t)
 print("     brand description:", d)
 check(t.startswith("Havells Dealer in Bengaluru") and "Wires" in t, "brand page: title names the brand, city and categories")
-check(d.startswith("Buy Havells in Bengaluru") and "Wires and Cables" in d, "brand page: description")
+check(d.startswith("Buy Havells in Bengaluru") and "Wires and Cables" in d, f"brand page: description ({d})")
 
 if org:
     check(org[0].get("sameAs") == ["https://www.facebook.com/rtech-test", "https://g.page/rtech-test"],
@@ -147,7 +147,7 @@ log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 mine = [l for l in log.splitlines() if "rtech-ai-seo" in l]
 for l in mine[:20]:
     print("     log:", l)
-check(not mine, "debug.log: no PHP notices, warnings or errors from the plugin")
+check(not mine, "debug.log: no PHP notices, warnings or errors from the plugin " + " / ".join(l[-300:] for l in mine[:3]))
 
 print(f"\n{len(fails)} failure(s)")
 sys.exit(1 if fails else 0)
