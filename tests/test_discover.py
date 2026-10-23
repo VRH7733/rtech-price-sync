@@ -95,3 +95,16 @@ def test_capped_run_fetches_first_brand_first_and_skips_catalogue_urls(tmp_path)
         "sku,brand,title,mode,publish,url_moglix\nRT-HAVE-001,Havells,MCB,priced,yes,https://www.moglix.com/havells-mcb/mp/2\n",
         encoding="utf-8")
     assert "https://www.moglix.com/havells-mcb/mp/2" in discover.catalogue_urls(rows)
+
+
+def test_interleave_covers_every_brand_and_pack_copies_are_dropped():
+    m = "https://www.moglix.com/"
+    urls = [m + "anchor-fan-1200-mm/mp/1", m + "anchor-fan-1200-mm-pack-of-2/mp/2",
+            m + "anchor-switch/mp/3", m + "schneider-mcb/mp/4", m + "wipro-led-bulb-pack-of-3/mp/5",
+            m + "ladder-with-schneider-logo/mp/6"]
+    kept = discover.drop_pack_copies(urls)
+    assert m + "anchor-fan-1200-mm-pack-of-2/mp/2" not in kept
+    assert m + "wipro-led-bulb-pack-of-3/mp/5" in kept  # no single listing: kept
+    assert discover.interleave_brands(kept, ["anchor", "schneider", "wipro"]) == [
+        m + "anchor-fan-1200-mm/mp/1", m + "schneider-mcb/mp/4", m + "wipro-led-bulb-pack-of-3/mp/5",
+        m + "anchor-switch/mp/3", m + "ladder-with-schneider-logo/mp/6"]

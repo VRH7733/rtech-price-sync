@@ -86,6 +86,33 @@ def order_by_brand(urls, brands):
     return sorted(urls, key=lambda u: (rank(u), u))
 
 
+_PACK_OF = re.compile(r"-pack-of-\d+(?=/|$)")
+
+
+def drop_pack_copies(urls):
+    """Moglix lists "...-fan-1200-mm-pack-of-2/mp/ID" next to "...-fan-1200-mm/mp/ID2": the same
+    product sold in multiples. Keep only the single one when it is a candidate too."""
+    singles = {_PACK_OF.sub("", urlparse(u).path.rsplit("/mp/", 1)[0]) for u in urls if not _PACK_OF.search(u)}
+    return [u for u in urls if not (_PACK_OF.search(u) and
+                                    _PACK_OF.sub("", urlparse(u).path.rsplit("/mp/", 1)[0]) in singles)]
+
+
+def interleave_brands(urls, brands):
+    """Brand order kept, but one page of each brand in turn, so a capped run covers every brand
+    instead of spending the whole cap on the first one. Pages of no listed brand go last."""
+    groups = {}
+    for u in order_by_brand(urls, brands):
+        first = urlparse(u).path.strip("/").split("/")[0].lower()
+        key = next((i for i, b in enumerate(brands) if first.startswith(b.replace(" ", "-") + "-")), len(brands))
+        groups.setdefault(key, []).append(u)
+    rest = groups.pop(len(brands), [])
+    lists = [groups[k] for k in sorted(groups)]
+    out = []
+    for i in range(max((len(x) for x in lists), default=0)):
+        out += [x[i] for x in lists if i < len(x)]
+    return out + rest
+
+
 def catalogue_urls(rows_dir) -> set:
     from rtech_sync.catalogue import load_catalogue
     return {u.split("?variant=")[0] for r in load_catalogue(rows_dir) for u in r.urls.values() if u}
@@ -144,6 +171,8 @@ def main(argv=None) -> int:
     ap.add_argument("--fetch", action="store_true", help="also fetch candidate pages (IB/HomeRun)")
     ap.add_argument("--max-pages", type=int, default=100)
     ap.add_argument("--previous", default="", help="earlier <source>.csv: reuse its fetched pages")
+    ap.add_argument("--interleave", action="store_true",
+                    help="fetch one page of each brand in turn (a capped run covers every brand)")
     ap.add_argument("--skip-catalogue", default="", help="catalogue rows dir: skip URLs it already uses")
     ap.add_argument("--out", default="out")
     ap.add_argument("--config", default=os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
@@ -165,7 +194,11 @@ def main(argv=None) -> int:
         n0 = len(urls)
         urls = [u for u in urls if u not in used]
         print(f"{a.source}: {n0 - len(urls)} candidates already in the catalogue, skipped")
-    urls = order_by_brand(urls, brands)
+    n0 = len(urls)
+    urls = drop_pack_copies(urls)
+    if n0 > len(urls):
+        print(f"{a.source}: {n0 - len(urls)} 'pack of N' copies of a listed single product skipped")
+    urls = interleave_brands(urls, brands) if a.interleave else order_by_brand(urls, brands)
     prev = load_previous(a.previous)
     rows, fetched = plan_rows(urls, prev, a.fetch, a.max_pages, lambda u: fetch_rows(fetcher, a.source, u))
     for r in rows:

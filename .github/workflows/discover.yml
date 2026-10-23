@@ -19,6 +19,10 @@ on:
       max_pages:
         description: "max product pages fetched per site (keep it inside 1,500 per site per day with the daily run)"
         default: "150"
+      interleave:
+        description: "fetch one page of each brand in turn, so a capped run covers every brand"
+        type: boolean
+        default: false
       previous:
         description: "continue an earlier run: its folder in the data repo, e.g. discovery/2026-10-15 (empty = fresh)"
         default: ""
@@ -64,11 +68,13 @@ jobs:
           MAX_PAGES: ${{ github.event.inputs.max_pages }}
           SOURCE: ${{ matrix.source }}
           PREVIOUS: ${{ github.event.inputs.previous }}
+          INTERLEAVE: ${{ github.event.inputs.interleave }}
         run: |
           mkdir -p out
           ARGS="--source $SOURCE --out out --max-pages $MAX_PAGES --fetch --skip-catalogue pd/catalogue/rows"
           for b in $BRANDS; do ARGS="$ARGS --brand $b"; done
           for k in $KEYWORDS; do ARGS="$ARGS --keyword $k"; done
+          if [ "$INTERLEAVE" = "true" ]; then ARGS="$ARGS --interleave"; fi
           if [ -n "$PREVIOUS" ]; then
             case "$PREVIOUS" in discovery/*) ;; *) echo "::error::previous must be discovery/<date>"; exit 1;; esac
             ARGS="$ARGS --previous pd/$PREVIOUS/$SOURCE.csv"
