@@ -123,7 +123,7 @@ d = html.unescape(meta(brand, "description") or "")
 print("     brand title:", t)
 print("     brand description:", d)
 check(t.startswith("Havells Dealer in Bengaluru") and "Wires" in t, "brand page: title names the brand, city and categories")
-check(d.startswith("Buy Havells in Bengaluru") and "Wires and Cables" in d, f"brand page: description ({d})")
+check(d.startswith("Buy Havells in Bengaluru") and "Wires & Cables" in d, f"brand page: description ({d})")
 
 if org:
     check(org[0].get("sameAs") == ["https://www.facebook.com/rtech-test", "https://g.page/rtech-test"],
@@ -144,7 +144,8 @@ check("560065" in llms and "Phone: +91" in llms, "llms.txt: address and phone")
 check("Also on: https://g.page/rtech-test" in llms, "llms.txt: the shop's other pages")
 
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
-mine = [l for l in log.splitlines() if "rtech-ai-seo" in l]
+# only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
+mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]
 for l in mine[:20]:
     print("     log:", l)
 check(not mine, "debug.log: no PHP notices, warnings or errors from the plugin " + " / ".join(l[-300:] for l in mine[:3]))
