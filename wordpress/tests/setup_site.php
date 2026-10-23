@@ -38,5 +38,22 @@ $q->set_status( 'publish' );
 $qid = $q->save();
 wp_set_object_terms( $qid, array( (int) $brand_id ), 'product_brand' );
 
+// the live categories carry generic Rank Math text; the plugin replaces it (setting term_seo)
+update_term_meta( $cat_id, 'rank_math_title', 'Wires & Cables Electrical Products' );
+update_term_meta( $cat_id, 'rank_math_description', 'Browse Wires & Cables product families and request exact specifications.' );
+update_option( 'rtech_ai_settings', array( 'profiles' => "https://www.facebook.com/rtech-test\nnot a link\nhttps://g.page/rtech-test" ) );
+
+// the live sitemap lists pages and products only: category sitemap off, as there
+$modules = (array) get_option( 'rank_math_modules', array() );
+if ( ! in_array( 'sitemap', $modules, true ) ) {
+	$modules[] = 'sitemap';
+	update_option( 'rank_math_modules', $modules );
+}
+$sm = get_option( 'rank-math-options-sitemap' );
+$sm = is_array( $sm ) ? $sm : array();
+$sm['tax_product_cat_sitemap'] = 'off';
+$sm['tax_product_brand_sitemap'] = 'off';
+update_option( 'rank-math-options-sitemap', $sm );
+
 $c = wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Contact Us', 'post_name' => 'contact-us', 'post_status' => 'publish' ) );
 echo "priced=$id quote=$qid\n";

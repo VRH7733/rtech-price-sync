@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.1' );
+define( 'RTECH_AI_VERSION', '1.0.2' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -33,9 +33,26 @@ function rtech_ai_settings() {
 		'about'      => 'RTechElectricals is an authorised dealer of electrical products in Bengaluru, Karnataka, India: wires and cables, modular switches, MCBs and switchgear, lighting, fans and pumps from Havells, Legrand, Polycab, KEI, RR Kabel, Finolex, GM and other brands. Prices shown on the site include GST. Products without a listed price can be quoted on request.',
 		'shop_desc'  => 'Shop 5,000+ electrical products in Bengaluru: Havells, Legrand, Polycab, KEI, RR Kabel and Finolex wires, cables, switches, MCBs, fans and lights. GST prices.',
 		'home_desc'  => 'Authorised dealer in Bengaluru for Havells, Legrand, Polycab, KEI, RR Kabel and Finolex. 5,000+ wires, cables, switches, MCBs and lights. GST prices, order online.',
+		// "yes": category and brand pages get the "... in Bengaluru" title and description even where
+		// one is saved in Rank Math (the live ones were generic: "Browse ... product families")
+		'term_seo'   => 'yes',
+		// the shop's pages elsewhere (Google Business Profile, Facebook, IndiaMART ...), one link per line
+		'profiles'   => '',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
+}
+
+/** The shop's own pages on other sites (Settings > RTech AI), as a list of links. */
+function rtech_ai_profiles() {
+	$links = preg_split( '/\s+/', (string) rtech_ai_settings()['profiles'], -1, PREG_SPLIT_NO_EMPTY );
+	$links = array_filter(
+		$links,
+		function ( $l ) {
+			return (bool) preg_match( '#^https?://[^/\s]+\.[^/\s]+#i', $l );
+		}
+	);
+	return array_values( array_filter( array_map( 'esc_url_raw', $links ) ) );
 }
 
 /** Repeatedly decode entities ("&amp;amp;" -> "&") and drop tags. */
@@ -155,13 +172,92 @@ function rtech_ai_filter_description( $description ) {
 	if ( function_exists( 'is_shop' ) && is_shop() ) {
 		return rtech_ai_settings()['shop_desc'];
 	}
-	if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-		$term = get_queried_object();
-		if ( $term && ! trim( (string) get_term_meta( $term->term_id, 'rank_math_description', true ) ) ) {
-			return rtech_ai_trim( rtech_ai_category_description( $term ) );
-		}
+	$term = rtech_ai_current_term();
+	if ( $term && rtech_ai_term_is_ours( $term, 'rank_math_description' ) ) {
+		return rtech_ai_trim( 'product_brand' === $term->taxonomy ? rtech_ai_brand_description( $term ) : rtech_ai_category_description( $term ) );
 	}
 	return $description;
+}
+
+/** The product category or brand whose archive page this is. */
+function rtech_ai_current_term() {
+	if ( ! function_exists( 'is_product_category' ) || ! ( is_product_category() || is_tax( 'product_brand' ) ) ) {
+		return null;
+	}
+	$term = get_queried_object();
+	return ( $term instanceof WP_Term ) ? $term : null;
+}
+
+/** Whether the plugin writes this term's title or description ($meta: the Rank Math term meta key). */
+function rtech_ai_term_is_ours( $term, $meta ) {
+	return 'yes' === rtech_ai_settings()['term_seo'] || '' === trim( (string) get_term_meta( $term->term_id, $meta, true ) );
+}
+
+/** The top-level categories with the most products of a brand, cached for 12 hours. */
+function rtech_ai_brand_categories( $term, $limit = 3 ) {
+	global $wpdb;
+	$key  = 'rtech_ai_brand_cats_' . $term->term_id;
+	$cats = get_transient( $key );
+	if ( is_array( $cats ) ) {
+		return array_slice( $cats, 0, $limit );
+	}
+	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT c.term_id, COUNT(DISTINCT r1.object_id) AS n FROM {$wpdb->term_relationships} r1 JOIN {$wpdb->term_taxonomy} b ON b.term_taxonomy_id = r1.term_taxonomy_id AND b.taxonomy = 'product_brand' AND b.term_id = %d JOIN {$wpdb->posts} p ON p.ID = r1.object_id AND p.post_status = 'publish' JOIN {$wpdb->term_relationships} r2 ON r2.object_id = r1.object_id JOIN {$wpdb->term_taxonomy} c ON c.term_taxonomy_id = r2.term_taxonomy_id AND c.taxonomy = 'product_cat' GROUP BY c.term_id", $term->term_id ) );
+	$top = array();
+	foreach ( (array) $rows as $r ) {
+		$ancestors = get_ancestors( (int) $r->term_id, 'product_cat', 'taxonomy' );
+		$root      = $ancestors ? (int) end( $ancestors ) : (int) $r->term_id;
+		$top[ $root ] = ( isset( $top[ $root ] ) ? $top[ $root ] : 0 ) + (int) $r->n;
+	}
+	arsort( $top );
+	$cats = array();
+	foreach ( array_keys( $top ) as $id ) {
+		$t = get_term( $id, 'product_cat' );
+		if ( $t && ! is_wp_error( $t ) && 'uncategorized' !== $t->slug ) {
+			$cats[] = rtech_ai_plain( $t->name );
+		}
+	}
+	$cats = array_slice( $cats, 0, 6 );
+	set_transient( $key, $cats, 12 * HOUR_IN_SECONDS );
+	return array_slice( $cats, 0, $limit );
+}
+
+/** "Buy Havells in Bengaluru from RTechElectricals, authorised Havells dealer: 2,557 products ..." */
+function rtech_ai_brand_description( $term ) {
+	$s    = rtech_ai_settings();
+	$name = rtech_ai_plain( $term->name );
+	$cats = rtech_ai_brand_categories( $term );
+	$text = 'Buy ' . $name . ' in ' . $s['city'] . ' from ' . $s['brand_name'] . ', authorised ' . $name . ' dealer: ' . number_format( (int) $term->count ) . ' products';
+	if ( $cats ) {
+		$last  = array_pop( $cats );
+		$text .= ' including ' . ( $cats ? implode( ', ', $cats ) . ' and ' : '' ) . $last;
+	}
+	return $text . '. Prices include GST; order online or request a quote.';
+}
+
+/** "Wires & Cables in Bengaluru: Havells, KEI | RTechElectricals", "Havells Dealer in Bengaluru: Wires, Switches | ..." */
+function rtech_ai_term_title( $term ) {
+	$s    = rtech_ai_settings();
+	$name = rtech_ai_plain( $term->name );
+	if ( 'product_brand' === $term->taxonomy ) {
+		$head = $name . ' Dealer in ' . $s['city'];
+		$list = array_map(
+			function ( $c ) {
+				return trim( preg_split( '/\s+(?:&|and)\s+/', $c )[0] ); // "Wires & Cables" -> "Wires"
+			},
+			rtech_ai_brand_categories( $term )
+		);
+	} else {
+		$head = $name . ' in ' . $s['city'];
+		$list = array_slice( rtech_ai_category_brands( $term ), 0, 3 );
+	}
+	$tail = ' | ' . $s['brand_name'];
+	for ( $n = count( $list ); $n > 0; $n-- ) {
+		$title = $head . ': ' . implode( ', ', array_slice( $list, 0, $n ) ) . $tail;
+		if ( mb_strlen( $title ) <= 65 ) {
+			return $title;
+		}
+	}
+	return $head . $tail;
 }
 
 /** The brands with the most products in a category (and its sub-categories), cached for 12 hours. */
@@ -205,6 +301,10 @@ add_filter( 'rank_math/opengraph/twitter/twitter_description', 'rtech_ai_filter_
 
 /** "Name - rtechelectricals" -> "Name | RTechElectricals" (the name the rest of the site uses). */
 function rtech_ai_filter_title( $title ) {
+	$term = rtech_ai_current_term();
+	if ( $term && rtech_ai_term_is_ours( $term, 'rank_math_title' ) ) {
+		return rtech_ai_term_title( $term );
+	}
 	$site = get_bloginfo( 'name' );
 	$want = rtech_ai_settings()['brand_name'];
 	if ( $site && $site !== $want ) {
@@ -283,6 +383,9 @@ add_filter(
 			}
 			if ( $s['email'] ) {
 				$data['publisher']['email'] = $s['email'];
+			}
+			if ( rtech_ai_profiles() ) {
+				$data['publisher']['sameAs'] = rtech_ai_profiles();
 			}
 		}
 		return $data;
@@ -452,6 +555,9 @@ function rtech_ai_llms_txt() {
 	if ( $s['email'] ) {
 		$facts[] = '- Email: ' . $s['email'];
 	}
+	foreach ( rtech_ai_profiles() as $link ) {
+		$facts[] = '- Also on: ' . $link;
+	}
 	$facts[] = '- Prices include GST; products with a price can be ordered online (add to cart).';
 	$facts[] = '- Products without a price show "Request a Quote": send the product and quantity and we reply with a price.';
 	$lines   = array_merge( $lines, $facts, array( '' ) );
@@ -544,6 +650,26 @@ foreach ( array( 'created_product_cat', 'edited_product_cat', 'delete_product_ca
 	add_action( $hook, function () { delete_transient( 'rtech_ai_llms_txt' ); } );
 }
 
+/* ---------- Sitemap: category and brand pages too ---------- */
+
+/**
+ * Rank Math's sitemap on the live site lists pages and products only, so Google finds the
+ * category and brand pages ("Havells", "Wires & Cables": the pages that answer "Havells wire
+ * Bengaluru") only through links. Switch both taxonomies' sitemaps on while the plugin is active.
+ */
+add_filter(
+	'option_rank-math-options-sitemap',
+	function ( $opts ) {
+		if ( is_array( $opts ) ) {
+			foreach ( array( 'product_cat', 'product_brand' ) as $tax ) {
+				$opts[ 'tax_' . $tax . '_sitemap' ] = 'on';
+			}
+		}
+		return $opts;
+	},
+	20
+);
+
 /* ---------- Robots: keep site search results out of the index ---------- */
 
 add_filter(
@@ -577,10 +703,11 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
-					$out['email'] = sanitize_email( $out['email'] );
+					$out['email']    = sanitize_email( $out['email'] );
+					$out['term_seo'] = empty( $in['term_seo'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -602,6 +729,8 @@ function rtech_ai_settings_page() {
 		'home_desc'  => 'Home page description (Google shows about 155 characters)',
 		'shop_desc'  => 'Shop page description',
 		'about'      => 'About the business (top of /llms.txt and the business data)',
+		'profiles'   => 'The shop on other sites: Google Business Profile, Facebook, IndiaMART ... (one link per line)',
+		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
 	echo '<p>Check the AI guide here: <a href="' . esc_url( home_url( '/llms.txt' ) ) . '" target="_blank">' . esc_html( home_url( '/llms.txt' ) ) . '</a>. After saving, purge LiteSpeed Cache.</p>';
@@ -610,7 +739,9 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'about', 'home_desc', 'shop_desc' ), true ) ) {
+		if ( 'term_seo' === $k ) {
+			echo '<input type="checkbox" id="rtech_ai_term_seo" name="rtech_ai_settings[term_seo]" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
+		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';
 		} else {
 			echo '<input class="regular-text" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="' . esc_attr( $s[ $k ] ) . '">';

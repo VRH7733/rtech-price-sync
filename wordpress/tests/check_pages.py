@@ -3,6 +3,7 @@
 
 Usage: check_pages.py <base url> <debug.log path>
 """
+import html
 import json
 import re
 import sys
@@ -107,12 +108,39 @@ check(d.startswith("Buy Wires & Cables in Bengaluru") or d.startswith("Buy Wires
       "category: description says what and where")
 check("Havells" in d, "category: description names the brands in it")
 
+t = re.search(r"<title>(.*?)</title>", cat, re.S)
+t = html.unescape(t.group(1)) if t else ""
+print("     category title:", t)
+check(t.startswith("Wires & Cables in Bengaluru") and t.endswith("| RTechElectricals") and len(t) <= 65,
+      "category: title says what and where, replaces the saved generic one")
+
+s, _, brand = get("/brand/havells/")
+check(s == 200, "brand page: HTTP 200")
+t = re.search(r"<title>(.*?)</title>", brand, re.S)
+t = html.unescape(t.group(1)) if t else ""
+d = html.unescape(meta(brand, "description") or "")
+print("     brand title:", t)
+print("     brand description:", d)
+check(t.startswith("Havells Dealer in Bengaluru") and "Wires" in t, "brand page: title names the brand, city and categories")
+check(d.startswith("Buy Havells in Bengaluru") and "Wires and Cables" in d, "brand page: description")
+
+if org:
+    check(org[0].get("sameAs") == ["https://www.facebook.com/rtech-test", "https://g.page/rtech-test"],
+          f"home: sameAs lists the shop's other pages, drops non-links ({org[0].get('sameAs')})")
+
+s, _, smap = get("/sitemap_index.xml")
+locs = re.findall(r"<loc>([^<]+)</loc>", smap)
+print("     sitemaps:", locs)
+check(any("product_cat-sitemap" in l for l in locs), "sitemap: category pages listed")
+check(any("product_brand-sitemap" in l for l in locs), "sitemap: brand pages listed")
+
 s, ctype, llms = get("/llms.txt")
 print(llms)
 check(s == 200 and ctype.startswith("text/plain"), "llms.txt: 200 text/plain")
 check(llms.startswith("# RTechElectricals"), "llms.txt: heading")
 check("Wires & Cables" in llms and "[Havells]" in llms and "Contact Us" in llms, "llms.txt: categories, brands, pages")
 check("560065" in llms and "Phone: +91" in llms, "llms.txt: address and phone")
+check("Also on: https://g.page/rtech-test" in llms, "llms.txt: the shop's other pages")
 
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 mine = [l for l in log.splitlines() if "rtech-ai-seo" in l]
