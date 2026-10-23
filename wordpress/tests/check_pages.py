@@ -35,6 +35,7 @@ def meta(page, name):
 def check(cond, msg):
     print(("ok   " if cond else "FAIL ") + msg)
     if not cond:
+        print(f"::error::{msg}")  # an annotation: readable from the run's check results
         fails.append(msg)
 
 
