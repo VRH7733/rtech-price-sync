@@ -148,7 +148,8 @@ def main(report_path):
         s, h, b = get(BASE + path)
         locs = re.findall(r"<loc>([^<]+)</loc>", b) if s == 200 else []
         section(lines, path, BASE + path, s, h)
-        lines[-1:-1] = [f"- <loc> entries: {len(locs)}; first: {locs[:12]}"]
+        others = [l for l in locs if "product-sitemap" not in l]
+        lines[-1:-1] = [f"- <loc> entries: {len(locs)}; first: {locs[:12]}", f"- non-product sitemaps: {others[:20]}"]
 
     s, h, b = get(BASE + "/wp-json/")
     ns = []
@@ -201,6 +202,8 @@ def main(report_path):
             s, h, b = get(cats[0]["permalink"])
             section(lines, f"Category page ({cats[0]['name']})", cats[0]["permalink"], s, h, b,
                     describe(b) if s == 200 else None)
+    s, h, b = get(BASE + "/brand/havells/")
+    section(lines, "Brand page (Havells)", BASE + "/brand/havells/", s, h, b, describe(b) if s == 200 else None)
     for url, priced, sku in picks:
         s, h, b = get(url)
         section(lines, f"Product page ({ {True: 'priced', False: 'Request a Quote', None: 'sitemap'}[priced] }, {sku})", url, s, h, b,
