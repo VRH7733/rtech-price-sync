@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.2
+ * Version:           1.0.3
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.2' );
+define( 'RTECH_AI_VERSION', '1.0.3' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -30,14 +30,19 @@ function rtech_ai_settings() {
 		'street'     => 'Ground Floor, Building No. 904, 21st Cross, 16th Main, Judicial Layout, Allalasandra, near Yelahanka',
 		'postcode'   => '560065',
 		'region'     => 'Karnataka',
-		'about'      => 'RTechElectricals is an authorised dealer of electrical products in Bengaluru, Karnataka, India: wires and cables, modular switches, MCBs and switchgear, lighting, fans and pumps from Havells, Legrand, Polycab, KEI, RR Kabel, Finolex, GM and other brands. Prices shown on the site include GST. Products without a listed price can be quoted on request.',
+		'about'      => 'RTechElectricals is an electrical supplier in Bengaluru, Karnataka, India: wires and cables, modular switches, MCBs and switchgear, lighting, fans and pumps. Prices shown on the site include GST. Products without a listed price can be quoted on request.',
 		'shop_desc'  => 'Shop 5,000+ electrical products in Bengaluru: Havells, Legrand, Polycab, KEI, RR Kabel and Finolex wires, cables, switches, MCBs, fans and lights. GST prices.',
-		'home_desc'  => 'Authorised dealer in Bengaluru for Havells, Legrand, Polycab, KEI, RR Kabel and Finolex. 5,000+ wires, cables, switches, MCBs and lights. GST prices, order online.',
+		'home_desc'  => 'Authorised dealer in Bengaluru for Havells, Legrand, Polycab, KEI, RR Kabel and Finolex, and all other major brands on request. 5,000+ products, GST prices.',
 		// "yes": category and brand pages get the "... in Bengaluru" title and description even where
 		// one is saved in Rank Math (the live ones were generic: "Browse ... product families")
 		'term_seo'   => 'yes',
 		// the shop's pages elsewhere (Google Business Profile, Facebook, IndiaMART ...), one link per line
 		'profiles'   => '',
+		// "authorised dealer" is said only for these (Harshi, 16 Oct 2026); the others are "supplied on request"
+		'dealer_brands' => 'Havells, Legrand, Polycab, KEI, RR Kabel, Finolex',
+		'other_brands'  => 'Schneider Electric, Siemens, ABB, L&T, Anchor by Panasonic, Crompton, Bajaj, Philips, Wipro, Orient Electric, V-Guard, Syska, Hager',
+		// "yes": a short "brands we supply" line above the footer on every page
+		'brand_bar'     => 'yes',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -53,6 +58,37 @@ function rtech_ai_profiles() {
 		}
 	);
 	return array_values( array_filter( array_map( 'esc_url_raw', $links ) ) );
+}
+
+/** "Havells, Legrand, ..." setting -> list of names. */
+function rtech_ai_list( $text ) {
+	return array_values( array_filter( array_map( 'trim', explode( ',', (string) $text ) ), 'strlen' ) );
+}
+
+/** "a, b and c" */
+function rtech_ai_join( $items ) {
+	$items = array_values( $items );
+	if ( count( $items ) < 2 ) {
+		return implode( '', $items );
+	}
+	$last = array_pop( $items );
+	return implode( ', ', $items ) . ' and ' . $last;
+}
+
+/** The sentence that says which brands we supply: dealer brands, then every other major brand. */
+function rtech_ai_supply_sentence() {
+	$s      = rtech_ai_settings();
+	$dealer = rtech_ai_list( $s['dealer_brands'] );
+	$other  = rtech_ai_list( $s['other_brands'] );
+	$text   = $dealer ? 'Authorised dealer for ' . rtech_ai_join( $dealer ) . '.' : '';
+	$text  .= ' We also supply all other major electrical brands on request' . ( $other ? ', including ' . rtech_ai_join( $other ) : '' ) . '.';
+	return trim( $text );
+}
+
+/** The about text plus the brands sentence (unless the saved about text already says it). */
+function rtech_ai_about() {
+	$about = rtech_ai_settings()['about'];
+	return false !== stripos( $about, 'all other major' ) ? $about : $about . ' ' . rtech_ai_supply_sentence();
 }
 
 /** Repeatedly decode entities ("&amp;amp;" -> "&") and drop tags. */
@@ -364,7 +400,7 @@ add_filter(
 				$data['publisher']['alternateName'] = $s['trade_name'];
 			}
 			$data['publisher']['url'] = home_url( '/' );
-			$data['publisher']['description'] = $s['about'];
+			$data['publisher']['description'] = rtech_ai_about();
 			// a shop with an address is a local business: Google and AI answers use it for "in Bengaluru"
 			if ( $s['street'] ) {
 				$data['publisher']['@type']      = array( 'Organization', 'Store' );
@@ -528,7 +564,7 @@ function rtech_ai_llms_txt() {
 		return $cached;
 	}
 	$s     = rtech_ai_settings();
-	$lines = array( '# ' . $s['brand_name'], '', '> ' . $s['about'], '' );
+	$lines = array( '# ' . $s['brand_name'], '', '> ' . rtech_ai_about(), '' );
 
 	$facts = array( '- Website: ' . home_url( '/' ) );
 	if ( $s['trade_name'] ) {
@@ -555,6 +591,10 @@ function rtech_ai_llms_txt() {
 	if ( $s['email'] ) {
 		$facts[] = '- Email: ' . $s['email'];
 	}
+	if ( rtech_ai_list( $s['dealer_brands'] ) ) {
+		$facts[] = '- Authorised dealer for: ' . implode( ', ', rtech_ai_list( $s['dealer_brands'] ) );
+	}
+	$facts[] = '- Also supplies all other major electrical brands on request' . ( rtech_ai_list( $s['other_brands'] ) ? ': ' . implode( ', ', rtech_ai_list( $s['other_brands'] ) ) . ' and more' : '' );
 	foreach ( rtech_ai_profiles() as $link ) {
 		$facts[] = '- Also on: ' . $link;
 	}
@@ -601,7 +641,7 @@ function rtech_ai_llms_txt() {
 	}
 
 	$pages = array();
-	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
+	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
 		$p = get_page_by_path( $slug );
 		if ( $p && 'publish' === $p->post_status ) {
 			$pages[ $p->ID ] = '- [' . rtech_ai_plain( get_the_title( $p ) ) . '](' . get_permalink( $p ) . ')';
@@ -649,6 +689,105 @@ add_action(
 foreach ( array( 'created_product_cat', 'edited_product_cat', 'delete_product_cat', 'created_product_brand', 'edited_product_brand', 'update_option_rtech_ai_settings' ) as $hook ) {
 	add_action( $hook, function () { delete_transient( 'rtech_ai_llms_txt' ); } );
 }
+
+/* ---------- "Brands we supply" line on every page ---------- */
+
+/** Page to send "can't find it?" visitors to: the BOQ upload page, else the contact page. */
+function rtech_ai_enquiry_url() {
+	foreach ( array( 'upload-boq', 'request-a-quote', 'contact', 'contact-us' ) as $slug ) {
+		$p = get_page_by_path( $slug );
+		if ( $p && 'publish' === $p->post_status ) {
+			return get_permalink( $p );
+		}
+	}
+	return home_url( '/' );
+}
+
+/** The dealer brands as links to their brand pages (where one exists). */
+function rtech_ai_brand_links_html( $names ) {
+	$out = array();
+	foreach ( $names as $name ) {
+		$term = taxonomy_exists( 'product_brand' ) ? get_term_by( 'name', $name, 'product_brand' ) : null;
+		$link = $term ? get_term_link( $term ) : '';
+		$out[] = ( $link && ! is_wp_error( $link ) ) ? '<a href="' . esc_url( $link ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name );
+	}
+	return rtech_ai_join( $out );
+}
+
+function rtech_ai_brand_bar_html() {
+	$s      = rtech_ai_settings();
+	$dealer = rtech_ai_list( $s['dealer_brands'] );
+	$other  = rtech_ai_list( $s['other_brands'] );
+	$phone  = preg_replace( '/[^\d+]/', '', $s['phone'] );
+	$html   = '<section class="rtech-brands-bar" aria-label="Brands we supply" style="max-width:1200px;margin:32px auto 0;padding:16px 20px;border-top:1px solid rgba(0,0,0,.1);font-size:15px;line-height:1.6;text-align:center">';
+	$html  .= '<p style="margin:0">';
+	if ( $dealer ) {
+		$html .= '<strong>Authorised dealer for ' . rtech_ai_brand_links_html( $dealer ) . '.</strong> ';
+	}
+	$html .= 'We also supply all other major electrical brands' . ( $other ? ', including ' . esc_html( rtech_ai_join( $other ) ) : '' ) . '. ';
+	$html .= 'Can\'t find a product? ';
+	if ( $phone ) {
+		$html .= 'Call <a href="tel:' . esc_attr( $phone ) . '">' . esc_html( $s['phone'] ) . '</a> or ';
+	}
+	$html .= '<a href="' . esc_url( rtech_ai_enquiry_url() ) . '">send us your list</a> for a quote.</p></section>';
+	return $html;
+}
+
+function rtech_ai_print_brand_bar() {
+	if ( ! empty( $GLOBALS['rtech_ai_bar_done'] ) || is_admin() || is_feed() || 'yes' !== rtech_ai_settings()['brand_bar'] ) {
+		return;
+	}
+	$GLOBALS['rtech_ai_bar_done'] = true;
+	echo rtech_ai_brand_bar_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above
+}
+add_action( 'blocksy:footer:before', 'rtech_ai_print_brand_bar' ); // the live theme: just above the footer
+add_action( 'wp_footer', 'rtech_ai_print_brand_bar', 1 );         // any other theme
+
+/* ---------- After an update: fresh llms.txt, a draft brands page, a cache purge ---------- */
+
+/** "Brands we supply" page text: every brand in the shop with its product count, then the others. */
+function rtech_ai_brands_page_html() {
+	$s     = rtech_ai_settings();
+	$html  = '<p><strong>' . esc_html( $s['brand_name'] ) . ', ' . esc_html( $s['city'] ) . '.</strong> ' . esc_html( rtech_ai_supply_sentence() ) . ' Prices on the site include GST.</p>';
+	$terms = taxonomy_exists( 'product_brand' ) ? get_terms( array( 'taxonomy' => 'product_brand', 'hide_empty' => true, 'orderby' => 'count', 'order' => 'DESC' ) ) : array();
+	if ( $terms && ! is_wp_error( $terms ) ) {
+		$html .= '<h2>Brands in our online shop</h2><ul>';
+		foreach ( $terms as $t ) {
+			$html .= '<li><a href="' . esc_url( get_term_link( $t ) ) . '">' . esc_html( rtech_ai_plain( $t->name ) ) . '</a>: ' . number_format( (int) $t->count ) . ' products</li>';
+		}
+		$html .= '</ul>';
+	}
+	if ( rtech_ai_list( $s['other_brands'] ) ) {
+		$html .= '<h2>Other brands we supply on request</h2><p>' . esc_html( rtech_ai_join( rtech_ai_list( $s['other_brands'] ) ) ) . ', and any other major electrical brand.</p>';
+	}
+	$html .= '<h2>How to order</h2><p>Products with a price can be ordered online. For anything else, call ' . esc_html( $s['phone'] ) . ', email ' . esc_html( $s['email'] ) . ' or <a href="' . esc_url( rtech_ai_enquiry_url() ) . '">send us your list</a> and we reply with a quote.</p>';
+	return $html;
+}
+
+add_action(
+	'init',
+	function () {
+		if ( get_option( 'rtech_ai_version' ) === RTECH_AI_VERSION ) {
+			return;
+		}
+		update_option( 'rtech_ai_version', RTECH_AI_VERSION ); // first, so two requests cannot both run this
+		delete_transient( 'rtech_ai_llms_txt' );
+		if ( ! get_page_by_path( 'brands-we-supply' ) ) {
+			// new site content goes in as a DRAFT: the owner publishes it
+			wp_insert_post(
+				array(
+					'post_type'    => 'page',
+					'post_status'  => 'draft',
+					'post_title'   => 'Brands We Supply',
+					'post_name'    => 'brands-we-supply',
+					'post_content' => rtech_ai_brands_page_html(),
+				)
+			);
+		}
+		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache's own "Purge All"; nothing happens without it
+	},
+	20
+);
 
 /* ---------- Sitemap: category and brand pages too ---------- */
 
@@ -703,11 +842,12 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email']    = sanitize_email( $out['email'] );
 					$out['term_seo'] = empty( $in['term_seo'] ) ? 'no' : 'yes';
+					$out['brand_bar'] = empty( $in['brand_bar'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -730,6 +870,9 @@ function rtech_ai_settings_page() {
 		'shop_desc'  => 'Shop page description',
 		'about'      => 'About the business (top of /llms.txt and the business data)',
 		'profiles'   => 'The shop on other sites: Google Business Profile, Facebook, IndiaMART ... (one link per line)',
+		'dealer_brands' => 'Brands you are an authorised dealer for (comma separated)',
+		'other_brands'  => 'Other brands you supply on request (comma separated)',
+		'brand_bar'     => 'Show the "brands we supply" line above the footer on every page',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
@@ -739,8 +882,8 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( 'term_seo' === $k ) {
-			echo '<input type="checkbox" id="rtech_ai_term_seo" name="rtech_ai_settings[term_seo]" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
+		if ( in_array( $k, array( 'term_seo', 'brand_bar' ), true ) ) {
+			echo '<input type="checkbox" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
 		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';
 		} else {

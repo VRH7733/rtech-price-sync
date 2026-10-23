@@ -97,6 +97,16 @@ if org:
           "home: Bengaluru address with PIN 560065")
     check(o.get("telephone", "").startswith("+91"), "home: phone")
 
+bar = re.search(r'<section class="rtech-brands-bar".*?</section>', home, re.S)
+print("     brands bar:", bar.group(0)[:600] if bar else None)
+check(bool(bar) and "Authorised dealer for" in bar.group(0) and "We also supply all other major electrical brands" in bar.group(0),
+      "home: brands line shown")
+check(bool(bar) and '/brand/havells/">Havells</a>' in bar.group(0) and "L&amp;T" in bar.group(0),
+      "home: brands line links dealer brands, escapes names")
+check(home.count('class="rtech-brands-bar"') == 1, "home: brands line printed once")
+if org:
+    check("all other major electrical brands" in org[0].get("description", ""), "home: business data says all brands supplied")
+
 s, _, shop = get("/shop/")
 if s == 200:
     d = meta(shop, "description") or ""
@@ -142,6 +152,8 @@ check(llms.startswith("# RTechElectricals"), "llms.txt: heading")
 check("Wires & Cables" in llms and "[Havells]" in llms and "Contact Us" in llms, "llms.txt: categories, brands, pages")
 check("560065" in llms and "Phone: +91" in llms, "llms.txt: address and phone")
 check("Also on: https://g.page/rtech-test" in llms, "llms.txt: the shop's other pages")
+check("- Authorised dealer for: Havells, Legrand" in llms and "all other major electrical brands" in llms,
+      "llms.txt: dealer brands and other brands")
 
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")

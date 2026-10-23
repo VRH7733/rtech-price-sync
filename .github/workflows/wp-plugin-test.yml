@@ -70,6 +70,10 @@ jobs:
           sleep 3
           touch wp-content/debug.log
           python3 ../wordpress/tests/check_pages.py http://127.0.0.1:8080 wp-content/debug.log
+          n=$(wp post list --post_type=page --post_status=draft --name=brands-we-supply --format=count)
+          echo "draft brands pages: $n"
+          if [ "$n" != "1" ]; then echo "::error::draft Brands We Supply page: expected 1, got $n"; exit 1; fi
+          wp post list --post_type=page --post_status=draft --name=brands-we-supply --field=post_content | head -c 1500
 
       - name: Show the product page head
         if: always()
