@@ -69,3 +69,20 @@ def test_out_of_stock_page_does_not_become_a_new_product():
     c = cand("moglix", "m1", "Havells Euro II 63A Single Pole C Curve MCB")
     c["_in_stock"] = False
     assert build("Havells", {"industrybuying": [], "homerun": [], "moglix": [c]}, []) == []
+
+
+def test_new_brand_titles_and_categories():
+    from rows_from_discovery import clean_title
+    assert category_of("Wipro 10A Wi-Fi Smart Plug (DSP1100)") == ""
+    assert category_of("Siemens 1542-1 Communications Module for S7-1500") == ""
+    assert category_of("Polycab Copper Lug 10 sqmm") == "Lugs & accessories"
+    assert clean_title({"title": "Wipro Garnet 3W LED Step Light | Warm White |", "variant": ""}) == \
+        "Wipro Garnet 3W LED Step Light, Warm White"
+    assert clean_title({"title": "Wipro Alpha Trimless COB LED Spotlight (2 Years Warranty)",
+                        "variant": "7W / Warm White/ 2700K"}) == "Wipro Alpha Trimless COB LED Spotlight 7W / Warm White/ 2700K"
+
+
+def test_kitchen_appliances_are_not_our_range():
+    from rows_from_discovery import NOT_OUR_RANGE
+    assert NOT_OUR_RANGE.search("Usha 18U 4L FS Bottled Water Dispenser")
+    assert not NOT_OUR_RANGE.search("Crompton Brisk Air Plus Exhaust Fan")

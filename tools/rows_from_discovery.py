@@ -73,8 +73,12 @@ def pack_of(title: str) -> str:
     return ""  # "Combined Plate 8 M", "Athena 12M Modular": modules, not metres
 
 
+_NOT_A_CATEGORY_WORD = re.compile(r"\b(?:plugs?|communications? module|\w*dispenser)\b", re.I)
+
+
 def category_of(title: str) -> str:
-    low = f" {title.lower()} "
+    """Leave it empty when unsure: the enrich tool then picks one (Fans, Lighting, ...)."""
+    low = f" {_NOT_A_CATEGORY_WORD.sub(' ', title.lower())} "  # "smart plug" is not a lug
     for cat, words in CATEGORY:
         if any(w in low for w in words):
             return cat
@@ -96,6 +100,12 @@ def hint_of(brand: str, text: str, pack: str) -> str:
     return "; ".join(x for x in [line, *specs, colour] if x)
 
 
+# Kitchen and home appliances: not what an electricals shop sells (23 Oct 2026 discovery found
+# Usha water dispensers and Crompton/Bajaj mixer grinders under the new brands).
+NOT_OUR_RANGE = re.compile(r"dispenser|mixer|grinder|juicer|toaster|kettle|air fryer|induction cook"
+                           r"|sandwich|oven|cooker|dry iron|steam iron", re.I)
+
+
 def is_brand_product(title: str, brand: str) -> bool:
     """Made by this brand: the title starts with it ("Havells ...") or says "by Havells".
     "IMO PRECISION CONTROLS ..." is not a Precision product."""
@@ -108,6 +118,8 @@ def clean_title(cand) -> str:
     v = (cand.get("variant") or "").strip()
     if v and normalise_text(v) not in normalise_text(t):
         t = f"{t} {v}"
+    t = re.sub(r"\s*\(2 Years? Warranty\)", "", t, flags=re.I)
+    t = re.sub(r"\s+[|I]\s+", ", ", t).strip(" |,")  # HomeRun: "Smart Plug (DSP1100) | Alexa ..."
     return re.sub(r",\s*[A-Z0-9]{6,}$", "", t)  # trailing manufacturer code ", CCP0162501"
 
 
@@ -122,7 +134,7 @@ def build(brand: str, disc: dict, existing: list) -> list:
         for cand in disc[src]:
             if cand["url"] in taken or not is_brand_product(cand.get("title") or "", brand):
                 continue
-            if cand.get("fetched") != "yes":
+            if cand.get("fetched") != "yes" or NOT_OUR_RANGE.search(cand.get("title") or ""):
                 continue
             if not cand["_in_stock"]:  # 18 Oct 2026: 293 of 301 Moglix-only products made from
                 continue  # out-of-stock pages could never get a price; a new product needs one
