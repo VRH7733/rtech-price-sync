@@ -69,6 +69,15 @@ def _row_pack_count(pack_norm: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+def pack_count(pack_size: str, title: str = "") -> int:
+    """How many pieces one product we sell holds: from its pack_size, else "Pack of N" in its title."""
+    n = _row_pack_count(normalise_text(pack_size or "")) if pack_size else None
+    if not n:
+        m = _MULTIPACK.search(normalise_text(title or ""))
+        n = int(m.group(1)) if m else None
+    return n if n and n > 1 else 1
+
+
 @dataclass
 class VariantCheck:
     status: str  # ok | variant_unconfirmed | pack_mismatch

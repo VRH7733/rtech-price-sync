@@ -57,6 +57,11 @@ pricing:
   # real price for a product stays in the comparison for up to this many days (it is never
   # re-read from anywhere else). The cheapest rule and all guards still apply.
   keep_blocked_days: 30
+  # 23 Oct 2026: kept IndustryBuying prices are not used at all. Checked against the brands' own
+  # MRPs (120 products) and Moglix/HomeRun (39): IB ran 2.9x Moglix at the median, and Havells items
+  # 5-145x MRP (a Rs 1,104 plug box shown at Rs 1.6 lakh). Those products show the brand MRP or
+  # Request a Quote instead.
+  never_keep_sources: [industrybuying]
   # Owner, 18 Oct 2026 ("option c"): a product with no marketplace price shows the brand's own
   # MRP from its official shop (Legrand, Havells), read within this many days, instead of Request
   # a Quote. No discount on MRP. Marketplace prices always win.

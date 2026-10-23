@@ -29,6 +29,7 @@ from .siblings import apply_cable_guard, apply_listing_guard, apply_sibling_guar
 from .decision import Decision, decide
 from .fetcher import Fetcher
 from .models import SourceResult
+from .normalise import pack_count
 from .pipeline import evaluate_source
 from .publisher import PublishReport, Update, WooClient, publish_updates
 from .state import get_price_state, load_state, save_state, set_item
@@ -116,6 +117,18 @@ def keep_blocked_prices(results: list, item: dict, stopped, today: date, max_day
     return kept
 
 
+def drop_unkept_price(d, results: list, item: dict, never_keep) -> None:
+    """A live price that came only from a source we no longer trust (pricing.never_keep_sources)
+    goes to Request a Quote today, instead of being held until stale_days."""
+    behind = set((item.get("sources") or {}).keys())
+    if (not never_keep or d.action != "hold" or d.pending is not None or not behind
+            or not behind <= set(never_keep) or any(res.usable for res in results)):
+        return
+    d.action, d.price, d.refreshed = "hide", None, False
+    d.flags.append("dropped_source:" + ",".join(sorted(behind)))
+    d.note = "its only price came from a source no longer used"
+
+
 def record_seen(state: dict, sku: str, results: list, today: date) -> None:
     """Remember each source's last REAL price and its date (kept prices keep their old date)."""
     item = state["items"].setdefault(sku, {})
@@ -146,7 +159,8 @@ def apply_brand_prices(items: list, brand_prices: dict, today: date, max_days: i
     """Owner, 18 Oct 2026 (option c): a product no marketplace can price shows the brand's own
     MRP from its official shop instead of Request a Quote. Only where the shop would otherwise show
     Request a Quote (hidden, or held with no price live); never instead of a marketplace price,
-    never over a held move. No discount on MRP."""
+    never over a held move. No discount on MRP. The brand's MRP is per piece: a product we sell
+    as a pack ("Pack of 20") shows MRP x 20."""
     n = 0
     for it in items:
         d, ps = it["decision"], it.get("ps")
@@ -156,8 +170,11 @@ def apply_brand_prices(items: list, brand_prices: dict, today: date, max_days: i
         mrp = fresh_brand_price(bp, today, max_days)
         if not quote or mrp is None:
             continue
-        d.action, d.price, d.refreshed = "publish", mrp, True
+        pieces = pack_count(it["row"].pack_size, it["row"].title)
+        d.action, d.price, d.refreshed = "publish", mrp * pieces, True
         d.info.append(f"brand_mrp:{bp.get('url', '')}")
+        if pieces > 1:
+            d.info.append(f"brand_mrp_pack:{pieces}")
         n += 1
     return n
 
@@ -270,7 +287,8 @@ def run_sync(
                 for s in cfg.sources
             ]
         kept = keep_blocked_prices(results, state["items"].get(r.sku, {}),
-                                   set(stopped) | set(cfg.fetch.skip_sources), today,
+                                   (set(stopped) | set(cfg.fetch.skip_sources))
+                                   - set(cfg.pricing.never_keep_sources), today,
                                    cfg.pricing.keep_blocked_days)
         # pilot dry run: judge a pending row as if it were approved (nothing is published)
         as_row = dataclasses.replace(r, publish="yes") if include_pending and r.publish == "pending_review" else r
@@ -279,6 +297,7 @@ def run_sync(
             d.flags.append("internal_error")
         for src, seen in kept:
             d.info.append(f"kept_last:{src}:{seen}")
+        drop_unkept_price(d, results, state["items"].get(r.sku, {}), cfg.pricing.never_keep_sources)
         rr.items.append({"row": r, "decision": d, "results": results, "live_price": ps.price, "ps": ps})
         if publish and ps.first_seen is None:
             set_item(state, r.sku, first_seen=today.isoformat())

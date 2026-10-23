@@ -28,7 +28,8 @@ def cfg():
     # also all three sites asked and no discount (the live -1% and IndustryBuying stop are
     # tested in test_live_rule_*)
     c = dataclasses.replace(c, fetch=dataclasses.replace(c.fetch, check_every_days=1, skip_sources=()),
-                            pricing=dataclasses.replace(c.pricing, stale_days=3, default_markup_pct=D(0)))
+                            pricing=dataclasses.replace(c.pricing, stale_days=3, default_markup_pct=D(0),
+                                                        never_keep_sources=()))
     # pages in these tests say "Inclusive of all taxes", but make the assumption explicit too
     return c
 
@@ -420,15 +421,33 @@ def test_live_rule_cheapest_of_moglix_and_homerun_less_one_percent_and_no_indust
     assert rr.items[0]["decision"].price == D(990)  # Rs 1,000 x 0.99
 
 
-def test_live_rule_keeps_last_industrybuying_price_while_it_is_not_asked():
+def test_live_rule_no_longer_keeps_old_industrybuying_prices():
+    # 23 Oct 2026: kept IB prices ran 2.9x Moglix and up to 145x the brand MRP, so none is used
     c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    assert c.pricing.never_keep_sources == ("industrybuying",)
     seen = (TODAY - timedelta(days=5)).isoformat()
     row = make_row(urls={"industrybuying": "https://www.industrybuying.com/p/b"})
     state = {"version": 1, "items": {"PC-1": {"first_seen": seen, "last_ok": seen, "price": "800",
                                               "sources": {"industrybuying": "800"}}}}
     rr = go(c, [row], state, FakeFetcher({}), FakeWoo(), publish=True)
-    assert rr.items[0]["decision"].price == D(792)  # kept Rs 800 less 1%
-    assert rr.stats["rows_not_refreshed"] == 0
+    d = rr.items[0]["decision"]
+    assert d.action == "hide" and d.price is None and not any(i.startswith("kept_last") for i in d.info)
+    assert d.flags == ["dropped_source:industrybuying"]  # gone today, not held for stale_days
+    rr = go(c, [row], state, FakeFetcher({}), FakeWoo(), publish=True, brand_prices={"PC-1": _bp(650)})
+    assert rr.items[0]["decision"].price == D(650)  # the brand MRP fills in, as for any Quote product
+
+
+def test_brand_mrp_is_per_piece_so_a_pack_shows_mrp_times_pieces():
+    c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    by_field = make_row(sku="L-1", pack_size="pack of 20", urls={})
+    by_title = dataclasses.replace(make_row(sku="L-2", urls={}), title="Legrand Lyncus Switch 6774 05 (Pack of 10)",
+                                   pack_size="")
+    single = dataclasses.replace(make_row(sku="L-3", urls={}), title="Havells Plug Box DHDPHSN020", pack_size="")
+    rr = go(c, [by_field, by_title, single], {"version": 1, "items": {}}, FakeFetcher({}), FakeWoo(),
+            publish=True, brand_prices={"L-1": _bp(746), "L-2": _bp(300), "L-3": _bp(1104)})
+    d = {it["row"].sku: it["decision"] for it in rr.items}
+    assert (d["L-1"].price, d["L-2"].price, d["L-3"].price) == (D(14920), D(3000), D(1104))
+    assert "brand_mrp_pack:20" in d["L-1"].info and not any("pack" in i for i in d["L-3"].info)
 
 
 def _bp(mrp, days_ago=1):
@@ -480,6 +499,7 @@ def test_broken_brand_price_file_means_no_brand_prices(tmp_path):
 
 def test_kept_only_rejudges_products_no_site_is_asked_about_without_any_request():
     c = live_cfg()
+    c = dataclasses.replace(c, pricing=dataclasses.replace(c.pricing, never_keep_sources=()))
     seen = (TODAY - timedelta(days=2)).isoformat()
     ib = make_row(sku="IB-1", title="KEI 400 Sq.mm 1 Core HRFR Flexible Cable Black (100 m)", pack_size="100 m",
                   variant_hint="400sqmm", urls={"industrybuying": "https://www.industrybuying.com/p/b"})
