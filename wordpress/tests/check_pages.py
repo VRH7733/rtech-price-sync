@@ -145,6 +145,10 @@ print("     sitemaps:", locs)
 check(any("product_cat-sitemap" in l for l in locs), "sitemap: category pages listed")
 check(any("product_brand-sitemap" in l for l in locs), "sitemap: brand pages listed")
 
+s, _, contact = get("/contact-us/")
+check("info@ramtechautomation.com" not in contact and "gmail.com" not in contact.lower(), "contact page: old .com and Gmail addresses gone")
+check('mailto:info@ramtechautomation.co.in' in contact, "contact page: business email in their place")
+
 s, ctype, llms = get("/llms.txt")
 print(llms)
 check(s == 200 and ctype.startswith("text/plain"), "llms.txt: 200 text/plain")

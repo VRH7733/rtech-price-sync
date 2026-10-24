@@ -55,5 +55,7 @@ $sm['tax_product_cat_sitemap'] = 'off';
 $sm['tax_product_brand_sitemap'] = 'off';
 update_option( 'rank-math-options-sitemap', $sm );
 
-$c = wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Contact Us', 'post_name' => 'contact-us', 'post_status' => 'publish' ) );
+$c = wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Contact Us', 'post_name' => 'contact-us', 'post_status' => 'publish',
+	// as on the live site: the old .com address and a personal Gmail address (made up here)
+	'post_content' => '<p>Email <a href="mailto:info@ramtechautomation.com">info@ramtechautomation.com</a> or Owner.Test99@gmail.com</p>' ) );
 echo "priced=$id quote=$qid\n";

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.3
+ * Version:           1.0.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.3' );
+define( 'RTECH_AI_VERSION', '1.0.4' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -43,6 +43,10 @@ function rtech_ai_settings() {
 		'other_brands'  => 'Schneider Electric, Siemens, ABB, L&T, Anchor by Panasonic, Crompton, Bajaj, Philips, Wipro, Orient Electric, V-Guard, Syska, Hager',
 		// "yes": a short "brands we supply" line above the footer on every page
 		'brand_bar'     => 'yes',
+		// addresses other plugins and pages still print; every page shows the business email instead
+		'old_emails'    => 'info@ramtechautomation.com',
+		// "yes": a Gmail address on a public page is replaced by the business email too
+		'hide_gmail'    => 'yes',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -789,6 +793,37 @@ add_action(
 	20
 );
 
+/* ---------- One business email on every page ---------- */
+
+/** Swap the old addresses (and any Gmail address) for the business email in a page's HTML. */
+function rtech_ai_fix_emails( $html ) {
+	$s    = rtech_ai_settings();
+	$want = sanitize_email( $s['email'] );
+	if ( ! $want || ! is_string( $html ) || '' === $html ) {
+		return $html;
+	}
+	foreach ( rtech_ai_list( $s['old_emails'] ) as $old ) {
+		if ( is_email( $old ) && strcasecmp( $old, $want ) !== 0 ) {
+			$html = str_ireplace( $old, $want, $html );
+		}
+	}
+	if ( 'yes' === $s['hide_gmail'] ) {
+		$html = preg_replace( '/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?:gmail|googlemail)\.com\b/i', $want, $html );
+	}
+	return $html;
+}
+
+add_action(
+	'template_redirect',
+	function () {
+		if ( is_admin() || is_feed() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return;
+		}
+		ob_start( 'rtech_ai_fix_emails' );
+	},
+	0
+);
+
 /* ---------- Sitemap: category and brand pages too ---------- */
 
 /**
@@ -842,12 +877,13 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email']    = sanitize_email( $out['email'] );
 					$out['term_seo'] = empty( $in['term_seo'] ) ? 'no' : 'yes';
 					$out['brand_bar'] = empty( $in['brand_bar'] ) ? 'no' : 'yes';
+					$out['hide_gmail'] = empty( $in['hide_gmail'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -873,6 +909,8 @@ function rtech_ai_settings_page() {
 		'dealer_brands' => 'Brands you are an authorised dealer for (comma separated)',
 		'other_brands'  => 'Other brands you supply on request (comma separated)',
 		'brand_bar'     => 'Show the "brands we supply" line above the footer on every page',
+		'old_emails'    => 'Old email addresses to replace with the customer email on every page (comma separated)',
+		'hide_gmail'    => 'Also replace any Gmail address shown on the site with the customer email',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
@@ -882,7 +920,7 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'term_seo', 'brand_bar' ), true ) ) {
+		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail' ), true ) ) {
 			echo '<input type="checkbox" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
 		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';
