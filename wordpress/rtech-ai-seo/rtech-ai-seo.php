@@ -37,7 +37,7 @@ function rtech_ai_settings() {
 		// one is saved in Rank Math (the live ones were generic: "Browse ... product families")
 		'term_seo'   => 'yes',
 		// the shop's pages elsewhere (Google Business Profile, Facebook, IndiaMART ...), one link per line
-		'profiles'   => '',
+		'profiles'   => 'https://ramtechautomation.co.in/', // the company's own site (same business, same address)
 		// "authorised dealer" is said only for these (Harshi, 16 Oct 2026); the others are "supplied on request"
 		'dealer_brands' => 'Havells, Legrand, Polycab, KEI, RR Kabel, Finolex',
 		'other_brands'  => 'Schneider Electric, Siemens, ABB, L&T, Anchor by Panasonic, Crompton, Bajaj, Philips, Wipro, Orient Electric, V-Guard, Syska, Hager',
