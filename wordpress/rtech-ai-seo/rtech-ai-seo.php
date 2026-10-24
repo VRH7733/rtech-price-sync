@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.5
+ * Version:           1.0.6
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.5' );
+define( 'RTECH_AI_VERSION', '1.0.6' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -50,6 +50,9 @@ function rtech_ai_settings() {
 		// India's e-commerce rules ask for the grievance officer's name and designation. The GST
 		// proprietor, whose name the site's own business data already shows; contact = business only.
 		'grievance'     => 'Kodandaram Kalavanchi, Proprietor',
+		// made to order (Harshi, 24 Oct 2026); the types are filled in once Harshi lists them
+		'panel_types'   => '',
+		'tray_types'    => '',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -427,6 +430,18 @@ add_filter(
 			if ( $s['email'] ) {
 				$data['publisher']['email'] = $s['email'];
 			}
+			if ( rtech_ai_services_page() ) {
+				$url  = get_permalink( rtech_ai_services_page() );
+				$area = array( '@type' => 'City', 'name' => $s['city'] );
+				$data['publisher']['hasOfferCatalog'] = array(
+					'@type'           => 'OfferCatalog',
+					'name'            => 'Made to order',
+					'itemListElement' => array(
+						array( '@type' => 'Offer', 'itemOffered' => array( '@type' => 'Service', 'name' => 'Custom electrical panel boards', 'url' => $url, 'areaServed' => $area ) ),
+						array( '@type' => 'Offer', 'itemOffered' => array( '@type' => 'Service', 'name' => 'Cable trays made to size', 'url' => $url, 'areaServed' => $area ) ),
+					),
+				);
+			}
 			if ( rtech_ai_profiles() ) {
 				$data['publisher']['sameAs'] = rtech_ai_profiles();
 			}
@@ -607,6 +622,9 @@ function rtech_ai_llms_txt() {
 	}
 	$facts[] = '- Prices include GST; products with a price can be ordered online (add to cart).';
 	$facts[] = '- Delivery: collect from the office or send your own transport (courier, Porter, own vehicle); we load it at no charge.';
+	if ( rtech_ai_services_page() ) {
+		$facts[] = '- Also builds to order: custom electrical panel boards and cable trays (' . get_permalink( rtech_ai_services_page() ) . ')';
+	}
 	$facts[] = '- Products without a price show "Request a Quote": send the product and quantity and we reply with a price.';
 	$lines   = array_merge( $lines, $facts, array( '' ) );
 
@@ -649,7 +667,7 @@ function rtech_ai_llms_txt() {
 	}
 
 	$pages = array();
-	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'delivery-and-pickup', 'returns-and-refunds', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
+	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'custom-panel-boards-cable-trays', 'delivery-and-pickup', 'returns-and-refunds', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
 		$p = get_page_by_path( $slug );
 		if ( $p && 'publish' === $p->post_status ) {
 			$pages[ $p->ID ] = '- [' . rtech_ai_plain( get_the_title( $p ) ) . '](' . get_permalink( $p ) . ')';
@@ -733,6 +751,9 @@ function rtech_ai_brand_bar_html() {
 		$html .= '<strong>Authorised dealer for ' . rtech_ai_brand_links_html( $dealer ) . '.</strong> ';
 	}
 	$html .= 'We also supply all other major electrical brands' . ( $other ? ', including ' . esc_html( rtech_ai_join( $other ) ) : '' ) . '. ';
+	if ( rtech_ai_services_page() ) {
+		$html .= 'We also build <a href="' . esc_url( get_permalink( rtech_ai_services_page() ) ) . '">custom panel boards and cable trays</a>. ';
+	}
 	$html .= 'Can\'t find a product? ';
 	if ( $phone ) {
 		$html .= 'Call <a href="tel:' . esc_attr( $phone ) . '">' . esc_html( $s['phone'] ) . '</a> or ';
@@ -770,6 +791,26 @@ function rtech_ai_brands_page_html() {
 	}
 	$html .= '<h2>How to order</h2><p>Products with a price can be ordered online. For anything else, call ' . esc_html( $s['phone'] ) . ', email ' . esc_html( $s['email'] ) . ' or <a href="' . esc_url( rtech_ai_enquiry_url() ) . '">send us your list</a> and we reply with a quote.</p>';
 	return $html;
+}
+
+/** The published "Custom Panel Boards and Cable Trays" page, or null while it is a draft. */
+function rtech_ai_services_page() {
+	$p = get_page_by_path( 'custom-panel-boards-cable-trays' );
+	return ( $p && 'publish' === $p->post_status ) ? $p : null;
+}
+
+/** Made-to-order work, as a page: what we build, and how to ask for a quote. */
+function rtech_ai_services_page_html() {
+	$s      = rtech_ai_settings();
+	$panels = rtech_ai_list( $s['panel_types'] );
+	$trays  = rtech_ai_list( $s['tray_types'] );
+	$who    = $s['trade_name'] ? $s['trade_name'] . ' (' . $s['brand_name'] . ')' : $s['brand_name'];
+	$h  = '<p>' . esc_html( $who ) . ' builds custom electrical panel boards and cable trays in ' . esc_html( $s['city'] ) . ', made to your drawing, load list or site needs.</p>';
+	$h .= '<h2>Custom panel boards</h2><p>' . ( $panels ? 'We build ' . esc_html( rtech_ai_join( $panels ) ) . '. ' : '' );
+	$h .= 'Each panel is built to your single-line diagram or requirement, with the switchgear brand you choose. We supply ' . esc_html( rtech_ai_join( rtech_ai_list( $s['dealer_brands'] ) ) ) . ' and all other major brands.</p>';
+	$h .= '<h2>Cable trays</h2><p>' . ( $trays ? 'We make ' . esc_html( rtech_ai_join( $trays ) ) . '. ' : '' ) . 'Made to the sizes and lengths your site needs.</p>';
+	$h .= '<h2>Get a quote</h2><p>Send your drawing, single-line diagram or list of requirements. <a href="' . esc_url( rtech_ai_enquiry_url() ) . '">Upload it here</a>, or contact us: ' . rtech_ai_contact_html() . '. Address: ' . esc_html( rtech_ai_address_line() ) . '.</p>';
+	return $h;
 }
 
 /** The shop's address on one line, from the settings. */
@@ -838,6 +879,7 @@ add_action(
 		rtech_ai_add_draft_page( 'brands-we-supply', 'Brands We Supply', rtech_ai_brands_page_html() );
 		rtech_ai_add_draft_page( 'delivery-and-pickup', 'Delivery and Pickup', rtech_ai_delivery_page_html() );
 		rtech_ai_add_draft_page( 'returns-and-refunds', 'Returns and Refunds', rtech_ai_returns_page_html() );
+		rtech_ai_add_draft_page( 'custom-panel-boards-cable-trays', 'Custom Panel Boards and Cable Trays in Bengaluru', rtech_ai_services_page_html() );
 		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache's own "Purge All"; nothing happens without it
 	},
 	20
@@ -927,7 +969,7 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails', 'grievance' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails', 'grievance', 'panel_types', 'tray_types' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email']    = sanitize_email( $out['email'] );
@@ -962,6 +1004,8 @@ function rtech_ai_settings_page() {
 		'old_emails'    => 'Old email addresses to replace with the customer email on every page (comma separated)',
 		'hide_gmail'    => 'Also replace any Gmail address shown on the site with the customer email',
 		'grievance'     => 'Grievance officer: name and designation (Returns and Refunds page)',
+		'panel_types'   => 'Panel boards you build (comma separated, for the Custom Panel Boards page)',
+		'tray_types'    => 'Cable trays you make (comma separated)',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';

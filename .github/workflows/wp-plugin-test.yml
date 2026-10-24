@@ -69,6 +69,12 @@ jobs:
           php -S 127.0.0.1:8080 router.php > /tmp/server.log 2>&1 &
           sleep 3
           touch wp-content/debug.log
+          body=$(wp post list --post_type=page --post_status=draft --name=custom-panel-boards-cable-trays --field=post_content)
+          echo "services draft: $(echo "$body" | head -c 400)"
+          echo "$body" | grep -q "custom electrical panel boards and cable trays" || { echo "::error::draft services page missing"; exit 1; }
+          # published, as the owner would: the shop-wide line, business data and llms.txt then mention it
+          wp post update $(wp post list --post_type=page --post_status=draft --name=custom-panel-boards-cable-trays --field=ID) --post_status=publish
+          wp transient delete rtech_ai_llms_txt
           python3 ../wordpress/tests/check_pages.py http://127.0.0.1:8080 wp-content/debug.log
           n=$(wp post list --post_type=page --post_status=draft --name=brands-we-supply --format=count)
           echo "draft brands pages: $n"

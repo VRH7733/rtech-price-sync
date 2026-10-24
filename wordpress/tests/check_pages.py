@@ -104,8 +104,12 @@ check(bool(bar) and "Authorised dealer for" in bar.group(0) and "We also supply 
 check(bool(bar) and '/brand/havells/">Havells</a>' in bar.group(0) and "L&amp;T" in bar.group(0),
       "home: brands line links dealer brands, escapes names")
 check(home.count('class="rtech-brands-bar"') == 1, "home: brands line printed once")
+check(bool(bar) and 'custom-panel-boards-cable-trays/">custom panel boards and cable trays</a>' in bar.group(0),
+      "home: brands line links the published panel boards page")
 if org:
     check("all other major electrical brands" in org[0].get("description", ""), "home: business data says all brands supplied")
+    names = [o["itemOffered"]["name"] for o in org[0].get("hasOfferCatalog", {}).get("itemListElement", [])]
+    check(names == ["Custom electrical panel boards", "Cable trays made to size"], f"home: business data lists the made-to-order work {names}")
 
 s, _, shop = get("/shop/")
 if s == 200:
@@ -156,6 +160,7 @@ check(llms.startswith("# RTechElectricals"), "llms.txt: heading")
 check("Wires & Cables" in llms and "[Havells]" in llms and "Contact Us" in llms, "llms.txt: categories, brands, pages")
 check("560065" in llms and "Phone: +91" in llms, "llms.txt: address and phone")
 check("Also on: https://g.page/rtech-test" in llms, "llms.txt: the shop's other pages")
+check("custom electrical panel boards and cable trays" in llms, "llms.txt: made-to-order work")
 check("- Authorised dealer for: Havells, Legrand" in llms and "all other major electrical brands" in llms,
       "llms.txt: dealer brands and other brands")
 
