@@ -9,6 +9,10 @@ on:
         description: "Space-separated full URLs; empty = the shop's main checks"
         required: false
         default: ""
+      find:
+        description: "Comma-separated words to count on each page (case-insensitive)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -23,6 +27,7 @@ jobs:
           WC_URL: ${{ secrets.WC_URL }}
           CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
           URLS: ${{ inputs.urls }}
+          FIND: ${{ inputs.find }}
         run: |
           base="${WC_URL%/}"
           ua="rtech-price-sync/0.1 (+mailto:$CONTACT_EMAIL)"
@@ -35,7 +40,12 @@ jobs:
             grep -q 'rtech-brands-bar' /tmp/body 2>/dev/null && marks="$marks brands-line"
             grep -q 'All other major\|all other major' /tmp/body 2>/dev/null && marks="$marks all-brands-text"
             emails=$(grep -oE '[A-Za-z0-9._%+-]+@(ramtechautomation\.[a-z.]+|gmail\.com)' /tmp/body 2>/dev/null | sort -u | tr '\n' ' ')
-            echo "::notice::$u => $out | title: $title | marks:$marks | emails: $emails"
+            found=""
+            IFS=',' read -ra words <<< "$FIND"
+            for w in "${words[@]}"; do
+              [ -n "$w" ] && found="$found $w=$(grep -oi -- "$w" /tmp/body 2>/dev/null | wc -l)"
+            done
+            echo "::notice::$u => $out | title: $title | marks:$marks | emails: $emails | found:$found"
             rm -f /tmp/body
             sleep 3
           done
