@@ -1,0 +1,41 @@
+name: site-probe
+
+# Manual, read-only: a few public pages, 20 s timeout each, 3 s apart, honest User-Agent.
+# Each result is printed as a run annotation (readable through the API), not stored anywhere.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Space-separated full URLs; empty = the shop's main checks"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+          URLS: ${{ inputs.urls }}
+        run: |
+          base="${WC_URL%/}"
+          ua="rtech-price-sync/0.1 (+mailto:$CONTACT_EMAIL)"
+          [ -n "$URLS" ] || URLS="$base/ $base/llms.txt $base/brands-we-supply/ $base/brand/havells/ $base/shop/"
+          for u in $URLS; do
+            out=$(curl -sS -L -m 20 -A "$ua" -o /tmp/body -w '%{http_code} %{time_total}s %{url_effective}' "$u" 2>&1)
+            title=$(grep -o -m1 '<title>[^<]*' /tmp/body 2>/dev/null | cut -c8-120)
+            marks=""
+            grep -q 'google-site-verification' /tmp/body 2>/dev/null && marks="$marks google-verification"
+            grep -q 'rtech-brands-bar' /tmp/body 2>/dev/null && marks="$marks brands-line"
+            grep -q 'All other major\|all other major' /tmp/body 2>/dev/null && marks="$marks all-brands-text"
+            emails=$(grep -oE '[A-Za-z0-9._%+-]+@(ramtechautomation\.[a-z.]+|gmail\.com)' /tmp/body 2>/dev/null | sort -u | tr '\n' ' ')
+            echo "::notice::$u => $out | title: $title | marks:$marks | emails: $emails"
+            rm -f /tmp/body
+            sleep 3
+          done
