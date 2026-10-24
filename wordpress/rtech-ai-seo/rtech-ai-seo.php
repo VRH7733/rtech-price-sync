@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.4
+ * Version:           1.0.5
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.4' );
+define( 'RTECH_AI_VERSION', '1.0.5' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -603,6 +603,7 @@ function rtech_ai_llms_txt() {
 		$facts[] = '- Also on: ' . $link;
 	}
 	$facts[] = '- Prices include GST; products with a price can be ordered online (add to cart).';
+	$facts[] = '- Delivery: collect from the office or send your own transport (courier, Porter, own vehicle); we load it at no charge.';
 	$facts[] = '- Products without a price show "Request a Quote": send the product and quantity and we reply with a price.';
 	$lines   = array_merge( $lines, $facts, array( '' ) );
 
@@ -645,7 +646,7 @@ function rtech_ai_llms_txt() {
 	}
 
 	$pages = array();
-	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
+	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'delivery-and-pickup', 'returns-and-refunds', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
 		$p = get_page_by_path( $slug );
 		if ( $p && 'publish' === $p->post_status ) {
 			$pages[ $p->ID ] = '- [' . rtech_ai_plain( get_the_title( $p ) ) . '](' . get_permalink( $p ) . ')';
@@ -768,6 +769,60 @@ function rtech_ai_brands_page_html() {
 	return $html;
 }
 
+/** The shop's address on one line, from the settings. */
+function rtech_ai_address_line() {
+	$s = rtech_ai_settings();
+	return implode( ', ', array_filter( array( $s['street'], $s['city'], $s['region'] . ' ' . $s['postcode'] ) ) );
+}
+
+/** How to reach us, for the policy pages. */
+function rtech_ai_contact_html() {
+	$s     = rtech_ai_settings();
+	$phone = preg_replace( '/[^\d+]/', '', $s['phone'] );
+	return 'Phone or WhatsApp <a href="tel:' . esc_attr( $phone ) . '">' . esc_html( $s['phone'] ) . '</a>, email <a href="mailto:' . esc_attr( $s['email'] ) . '">' . esc_html( $s['email'] ) . '</a>';
+}
+
+/** Delivery terms as Harshi set them on 24 Oct 2026: pickup or the customer's own transport, we load. */
+function rtech_ai_delivery_page_html() {
+	$s = rtech_ai_settings();
+	$h = '<p>We do not deliver. You collect your order from our office, or send your own transport, and we load it for you at no charge.</p>';
+	$h .= '<h2>1. Collect from our office</h2><p>' . esc_html( rtech_ai_address_line() ) . '. Please call before you come, so your order is packed and ready.</p>';
+	$h .= '<h2>2. Send your own transport</h2><p>Send your own vehicle, a courier, Porter or any transporter of your choice. We load the goods onto your vehicle or hand them to your courier at our office. The transport cost and the booking are yours.</p>';
+	$h .= '<h2>Check your goods at loading</h2><p>Please check the quantity, the model and the condition of the goods when they are loaded or handed over, and sign the delivery note. From that moment the goods travel at the buyer\'s risk: we are not responsible for loss or damage in transit.</p>';
+	$h .= '<h2>Invoice</h2><p>Every order comes with a GST invoice. Prices on the website include GST.</p>';
+	$h .= '<h2>Questions</h2><p>' . rtech_ai_contact_html() . '.</p>';
+	return $h;
+}
+
+/** Return and refund terms as Harshi set them on 24 Oct 2026, with the usual dealer terms around them. */
+function rtech_ai_returns_page_html() {
+	$s = rtech_ai_settings();
+	$h = '<h2>Wrong or faulty item</h2><p>If you receive a wrong item or a faulty one, tell us within 7 days of collection. Send the invoice number and photos or a short video of the problem to ' . rtech_ai_contact_html() . '.</p>';
+	$h .= '<h2>Replacement</h2><ul><li>We replace a wrong or faulty item once, and we arrange the transport for that replacement.</li><li>If the replacement also has a problem, you can collect another replacement from our office, or ask for a refund.</li></ul>';
+	$h .= '<h2>Refund</h2><p>Refunds are paid to the original payment method within 7 business days after we receive and check the returned item.</p>';
+	$h .= '<h2>What we cannot take back</h2><ul><li>Wires and cables cut to the length you ordered</li><li>Items that have been installed or used</li><li>Items damaged by wrong installation, wrong voltage or rough handling</li><li>Items ordered specially for you</li><li>Items returned without the original box and invoice</li><li>Items you no longer want, if there is nothing wrong with them</li></ul>';
+	$h .= '<h2>Cancelling an order</h2><p>You can cancel an order before the goods are loaded or handed over. We refund the full amount within 7 business days.</p>';
+	$h .= '<h2>Manufacturer\'s warranty</h2><p>Products carry the brand\'s own warranty. Warranty claims are handled under the brand\'s warranty terms; we help you with the invoice and the claim.</p>';
+	$h .= '<h2>Grievance officer</h2><p>' . esc_html( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ) . ', ' . esc_html( rtech_ai_address_line() ) . '. ' . rtech_ai_contact_html() . '. We acknowledge every complaint within 48 hours and resolve it within one month.</p>';
+	return $h;
+}
+
+/** New site content goes in as a DRAFT: the owner reads and publishes it. Never touches an existing page. */
+function rtech_ai_add_draft_page( $slug, $title, $html ) {
+	if ( get_page_by_path( $slug ) ) {
+		return;
+	}
+	wp_insert_post(
+		array(
+			'post_type'    => 'page',
+			'post_status'  => 'draft',
+			'post_title'   => $title,
+			'post_name'    => $slug,
+			'post_content' => $html,
+		)
+	);
+}
+
 add_action(
 	'init',
 	function () {
@@ -776,18 +831,9 @@ add_action(
 		}
 		update_option( 'rtech_ai_version', RTECH_AI_VERSION ); // first, so two requests cannot both run this
 		delete_transient( 'rtech_ai_llms_txt' );
-		if ( ! get_page_by_path( 'brands-we-supply' ) ) {
-			// new site content goes in as a DRAFT: the owner publishes it
-			wp_insert_post(
-				array(
-					'post_type'    => 'page',
-					'post_status'  => 'draft',
-					'post_title'   => 'Brands We Supply',
-					'post_name'    => 'brands-we-supply',
-					'post_content' => rtech_ai_brands_page_html(),
-				)
-			);
-		}
+		rtech_ai_add_draft_page( 'brands-we-supply', 'Brands We Supply', rtech_ai_brands_page_html() );
+		rtech_ai_add_draft_page( 'delivery-and-pickup', 'Delivery and Pickup', rtech_ai_delivery_page_html() );
+		rtech_ai_add_draft_page( 'returns-and-refunds', 'Returns and Refunds', rtech_ai_returns_page_html() );
 		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache's own "Purge All"; nothing happens without it
 	},
 	20

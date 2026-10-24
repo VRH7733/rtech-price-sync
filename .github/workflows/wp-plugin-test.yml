@@ -74,6 +74,16 @@ jobs:
           echo "draft brands pages: $n"
           if [ "$n" != "1" ]; then echo "::error::draft Brands We Supply page: expected 1, got $n"; exit 1; fi
           wp post list --post_type=page --post_status=draft --name=brands-we-supply --field=post_content | head -c 1500
+          for slug in delivery-and-pickup returns-and-refunds; do
+            body=$(wp post list --post_type=page --post_status=draft --name=$slug --field=post_content)
+            echo "$slug: $(echo "$body" | head -c 300)"
+            case "$slug" in
+              delivery-and-pickup) want="send your own transport" ;;
+              returns-and-refunds) want="within 7 business days" ;;
+            esac
+            echo "$body" | grep -qi "$want" || { echo "::error::draft $slug missing or without '$want'"; exit 1; }
+            echo "$body" | grep -q "560065" || { echo "::error::draft $slug without the address"; exit 1; }
+          done
 
       - name: Show the product page head
         if: always()
