@@ -47,6 +47,9 @@ function rtech_ai_settings() {
 		'old_emails'    => 'info@ramtechautomation.com',
 		// "yes": a Gmail address on a public page is replaced by the business email too
 		'hide_gmail'    => 'yes',
+		// India's e-commerce rules ask for the grievance officer's name and designation. The GST
+		// proprietor, whose name the site's own business data already shows; contact = business only.
+		'grievance'     => 'Kodandaram Kalavanchi, Proprietor',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -803,7 +806,8 @@ function rtech_ai_returns_page_html() {
 	$h .= '<h2>What we cannot take back</h2><ul><li>Wires and cables cut to the length you ordered</li><li>Items that have been installed or used</li><li>Items damaged by wrong installation, wrong voltage or rough handling</li><li>Items ordered specially for you</li><li>Items returned without the original box and invoice</li><li>Items you no longer want, if there is nothing wrong with them</li></ul>';
 	$h .= '<h2>Cancelling an order</h2><p>You can cancel an order before the goods are loaded or handed over. We refund the full amount within 7 business days.</p>';
 	$h .= '<h2>Manufacturer\'s warranty</h2><p>Products carry the brand\'s own warranty. Warranty claims are handled under the brand\'s warranty terms; we help you with the invoice and the claim.</p>';
-	$h .= '<h2>Grievance officer</h2><p>' . esc_html( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ) . ', ' . esc_html( rtech_ai_address_line() ) . '. ' . rtech_ai_contact_html() . '. We acknowledge every complaint within 48 hours and resolve it within one month.</p>';
+	$who = trim( $s['grievance'] . ', ' . ( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ), ', ' );
+	$h  .= '<h2>Grievance officer</h2><p>' . esc_html( $who ) . ', ' . esc_html( rtech_ai_address_line() ) . '. ' . rtech_ai_contact_html() . '. We acknowledge every complaint within 48 hours and resolve it within one month.</p>';
 	return $h;
 }
 
@@ -923,7 +927,7 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails', 'grievance' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email']    = sanitize_email( $out['email'] );
@@ -957,6 +961,7 @@ function rtech_ai_settings_page() {
 		'brand_bar'     => 'Show the "brands we supply" line above the footer on every page',
 		'old_emails'    => 'Old email addresses to replace with the customer email on every page (comma separated)',
 		'hide_gmail'    => 'Also replace any Gmail address shown on the site with the customer email',
+		'grievance'     => 'Grievance officer: name and designation (Returns and Refunds page)',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';

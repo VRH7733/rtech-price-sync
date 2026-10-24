@@ -79,7 +79,7 @@ jobs:
             echo "$slug: $(echo "$body" | head -c 300)"
             case "$slug" in
               delivery-and-pickup) want="send your own transport" ;;
-              returns-and-refunds) want="within 7 business days" ;;
+              returns-and-refunds) want="Proprietor, RAMTECH AUTOMATION" ;;
             esac
             echo "$body" | grep -qi "$want" || { echo "::error::draft $slug missing or without '$want'"; exit 1; }
             echo "$body" | grep -q "560065" || { echo "::error::draft $slug without the address"; exit 1; }
