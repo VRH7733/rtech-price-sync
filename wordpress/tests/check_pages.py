@@ -193,6 +193,8 @@ check("1 products listed, 1 in stock" in feed, "feed: count comment")
 check("send the order request" in llms and "we book Porter or a courier for you" in llms, "llms.txt: how to order, delivery options")
 
 s, _, ship = get("/shipping-delivery-policy/")
+for m in re.finditer("24-48", ship):
+    print("     24-48 at:", ship[max(0, m.start() - 200):m.start() + 40].replace("\n", " "))
 check("We book transport for you" in ship and "24-48" not in ship, "old delivery policy page shows the current terms")
 s, _, priv = get("/privacy-policy/")
 check("Digital Personal Data Protection Act, 2023" in priv and "Data Protection Board of India" in priv, "privacy page: DPDP rights section")

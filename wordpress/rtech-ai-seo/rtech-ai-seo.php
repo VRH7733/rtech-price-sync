@@ -245,6 +245,9 @@ function rtech_ai_filter_description( $description ) {
 	if ( is_front_page() ) {
 		return rtech_ai_settings()['home_desc'];
 	}
+	if ( rtech_ai_is_page_slug( rtech_ai_list( rtech_ai_settings()['delivery_pages'] ) ) ) {
+		return rtech_ai_trim( rtech_ai_plain( rtech_ai_delivery_page_html() ) );
+	}
 	if ( function_exists( 'is_shop' ) && is_shop() ) {
 		return rtech_ai_settings()['shop_desc'];
 	}
