@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       RTech AI & Search Helper
- * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt and a Google Merchant Center product feed. Changes no prices, stock or product content.
- * Version:           1.0.9
+ * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, and consistent policy pages. Changes no prices, stock or product content.
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.9' );
+define( 'RTECH_AI_VERSION', '1.1.0' );
 define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
@@ -56,6 +56,16 @@ function rtech_ai_settings() {
 		// made to order (Harshi, 24 Oct 2026); the types are filled in once Harshi lists them
 		'panel_types'   => '',
 		'tray_types'    => '',
+		// "yes": with no payment method switched on, the checkout takes order requests (Harshi, 25 Oct
+		// 2026: the customer adds to cart and proceeds, Harshi gets the details by email and WhatsApp
+		// and calls them). Uses WooCommerce's own Cash on delivery method, renamed.
+		'order_request' => 'yes',
+		// the WhatsApp number order requests go to
+		'whatsapp'      => '+91 84318 77469',
+		// pages from before (7 Sep) that named another grievance officer: shown with the name above
+		'grievance_old' => 'raghavendra',
+		// older delivery pages whose text contradicts the delivery terms: they show the current terms
+		'delivery_pages' => 'shipping-delivery-policy',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -176,6 +186,23 @@ function rtech_ai_has_price( $product ) {
 	return '' !== (string) $product->get_price() && (float) $product->get_price() > 0;
 }
 
+/** True when the checkout can take an order: at least one payment method is switched on. */
+function rtech_ai_can_order() {
+	static $on = null;
+	if ( null === $on ) {
+		$on = false;
+		if ( function_exists( 'WC' ) && did_action( 'woocommerce_init' ) && WC()->payment_gateways() ) {
+			foreach ( WC()->payment_gateways()->payment_gateways() as $gateway ) {
+				if ( 'yes' === $gateway->enabled ) {
+					$on = true;
+					break;
+				}
+			}
+		}
+	}
+	return $on;
+}
+
 /** The sentence search results and AI answers show for a product. */
 function rtech_ai_product_description( $product ) {
 	$s     = rtech_ai_settings();
@@ -188,7 +215,7 @@ function rtech_ai_product_description( $product ) {
 	}
 	$genuine = 'Genuine ' . ( $brand ? $brand . ' ' : '' ) . 'product';
 	$text   .= rtech_ai_has_price( $product )
-		? ' ' . $genuine . ', price incl. GST. Buy online at ' . $s['brand_name'] . ', ' . $s['city'] . '.'
+		? ' ' . $genuine . ', price incl. GST. ' . ( rtech_ai_can_order() ? 'Order online at ' : 'Order by phone or WhatsApp from ' ) . $s['brand_name'] . ', ' . $s['city'] . '.'
 		: ' ' . $genuine . '. Request a quote from ' . $s['brand_name'] . ', ' . $s['city'] . '.';
 	return $text;
 }
@@ -623,8 +650,10 @@ function rtech_ai_llms_txt() {
 	foreach ( rtech_ai_profiles() as $link ) {
 		$facts[] = '- Also on: ' . $link;
 	}
-	$facts[] = '- Prices include GST; products with a price can be ordered online (add to cart).';
-	$facts[] = '- Delivery: collect from the office or send your own transport (courier, Porter, own vehicle); we load it at no charge.';
+	$facts[] = rtech_ai_can_order()
+		? '- Prices include GST. To order, add products to the cart and send the order request (no payment online); we call to confirm stock, the final price and pickup or transport, and payment is agreed on that call.'
+		: '- Prices include GST. To order, call or WhatsApp ' . $s['phone'] . ' or email ' . $s['email'] . '.';
+	$facts[] = '- Delivery: collect from the office, send your own transport (courier, Porter, own vehicle), or we book Porter or a courier for you; transport charges are paid by the customer, and we load at no charge.';
 	if ( rtech_ai_services_page() ) {
 		$facts[] = '- Also builds to order: custom electrical panel boards and cable trays (' . get_permalink( rtech_ai_services_page() ) . ')';
 	}
@@ -985,10 +1014,12 @@ function rtech_ai_contact_html() {
 /** Delivery terms as Harshi set them on 24 Oct 2026: pickup or the customer's own transport, we load. */
 function rtech_ai_delivery_page_html() {
 	$s = rtech_ai_settings();
-	$h = '<p>We do not deliver. You collect your order from our office, or send your own transport, and we load it for you at no charge.</p>';
+	$h = '<p>Collect your order from our office, send your own transport, or ask us to book Porter or a courier for you. Transport charges are always paid by you; we load the goods at no charge.</p>';
 	$h .= '<h2>1. Collect from our office</h2><p>' . esc_html( rtech_ai_address_line() ) . '. Please call before you come, so your order is packed and ready.</p>';
-	$h .= '<h2>2. Send your own transport</h2><p>Send your own vehicle, a courier, Porter or any transporter of your choice. We load the goods onto your vehicle or hand them to your courier at our office. The transport cost and the booking are yours.</p>';
-	$h .= '<h2>Check your goods at loading</h2><p>Please check the quantity, the model and the condition of the goods when they are loaded or handed over, and sign the delivery note. From that moment the goods travel at the buyer\'s risk: we are not responsible for loss or damage in transit.</p>';
+	$h .= '<h2>2. Send your own transport</h2><p>Send your own vehicle, a courier, Porter or any transporter of your choice. We load the goods onto your vehicle or hand them to your courier at our office.</p>';
+	$h .= '<h2>3. We book transport for you</h2><p>We can book Porter, a courier or another transporter for you. We tell you the transport charge before we book, and you pay it, as agreed on the call.</p>';
+	$h .= '<h2>Where we serve</h2><p>' . esc_html( $s['city'] ) . '. Outside ' . esc_html( $s['city'] ) . ', in ' . esc_html( $s['region'] ) . ' and the rest of India, by courier or transporter where the route is serviceable.</p>';
+	$h .= '<h2>Check your goods at loading</h2><p>Please check the quantity, the model and the condition of the goods when they are loaded or handed over to you or your transporter, and sign the delivery note. From that moment the goods travel at the buyer\'s risk: we are not responsible for loss or damage in transit. Report a wrong or faulty item within 7 days, as our returns policy explains.</p>';
 	$h .= '<h2>Invoice</h2><p>Every order comes with a GST invoice. Prices on the website include GST.</p>';
 	$h .= '<h2>Questions</h2><p>' . rtech_ai_contact_html() . '.</p>';
 	return $h;
@@ -1002,7 +1033,7 @@ function rtech_ai_returns_page_html() {
 	$h .= '<h2>Refund</h2><p>Refunds are paid to the original payment method within 7 business days after we receive and check the returned item.</p>';
 	$h .= '<h2>What we cannot take back</h2><ul><li>Wires and cables cut to the length you ordered</li><li>Items that have been installed or used</li><li>Items damaged by wrong installation, wrong voltage or rough handling</li><li>Items ordered specially for you</li><li>Items returned without the original box and invoice</li><li>Items you no longer want, if there is nothing wrong with them</li></ul>';
 	$delivery = get_page_by_path( 'delivery-and-pickup' );
-	$h       .= '<h2>Delivery</h2><p>We do not deliver. You collect your order from our office, or send your own vehicle, courier or Porter, and we load it for you at no charge. Please check the goods at loading; after that they travel at the buyer\'s risk.' . ( ( $delivery && 'publish' === $delivery->post_status ) ? ' <a href="' . esc_url( get_permalink( $delivery ) ) . '">Delivery and pickup details</a>.' : '' ) . '</p>';
+	$h       .= '<h2>Delivery</h2><p>Collect your order from our office, send your own vehicle, courier or Porter, or ask us to book Porter or a courier for you. Transport charges are paid by you, and we load at no charge. Please check the goods at loading; after that they travel at the buyer\'s risk.' . ( ( $delivery && 'publish' === $delivery->post_status ) ? ' <a href="' . esc_url( get_permalink( $delivery ) ) . '">Delivery and pickup details</a>.' : '' ) . '</p>';
 	$h .= '<h2>Cancelling an order</h2><p>You can cancel an order before the goods are loaded or handed over. We refund the full amount within 7 business days.</p>';
 	$h .= '<h2>Manufacturer\'s warranty</h2><p>Products carry the brand\'s own warranty. Warranty claims are handled under the brand\'s warranty terms; we help you with the invoice and the claim.</p>';
 	$who = trim( $s['grievance'] . ', ' . ( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ), ', ' );
@@ -1069,6 +1100,8 @@ add_action(
 		rtech_ai_add_draft_page( 'brands-we-supply', 'Brands We Supply', rtech_ai_brands_page_html() );
 		rtech_ai_add_draft_page( 'delivery-and-pickup', 'Delivery and Pickup', rtech_ai_delivery_page_html() );
 		rtech_ai_one_returns_page();
+		rtech_ai_order_request_setup();
+		rtech_ai_refresh_policy_pages();
 		// settings saved before the profile link existed: add it to them too
 		$saved = get_option( 'rtech_ai_settings' );
 		if ( is_array( $saved ) && ! empty( $saved['profiles'] ) && false === strpos( $saved['profiles'], RTECH_AI_GBP_LINK ) ) {
@@ -1080,6 +1113,164 @@ add_action(
 	},
 	20
 );
+
+/* ---------- Order requests: the cart sends the order, Harshi calls the customer ---------- */
+
+/**
+ * The live checkout had every payment method switched off ("There are no payment methods
+ * available"), so no order could be placed. Harshi (25 Oct 2026): customers add to cart and
+ * proceed, the details reach Harshi by email and WhatsApp, Harshi calls and takes over.
+ * WooCommerce's own Cash on delivery method does exactly that and works in the block checkout:
+ * it is switched on once, renamed, and works without a delivery method. The old settings are kept
+ * in the option rtech_ai_cod_backup. Nothing happens if a payment method is already on.
+ */
+function rtech_ai_order_request_setup() {
+	if ( get_option( 'rtech_ai_order_request_done' ) || 'yes' !== rtech_ai_settings()['order_request'] || rtech_ai_can_order() ) {
+		return;
+	}
+	update_option( 'rtech_ai_order_request_done', time() );
+	$cod = get_option( 'woocommerce_cod_settings', array() );
+	$cod = is_array( $cod ) ? $cod : array();
+	update_option( 'rtech_ai_cod_backup', $cod, false );
+	update_option(
+		'woocommerce_cod_settings',
+		array_merge(
+			$cod,
+			array(
+				'enabled'            => 'yes',
+				'title'              => 'Order request: no payment now',
+				'description'        => 'We call you to confirm stock, the final price and pickup or transport. You pay only after that call, as agreed with us.',
+				'instructions'       => 'We have received your order request. We will call you to confirm stock, the final price and pickup or transport. No payment has been taken.',
+				'enable_for_methods' => array(),
+				'enable_for_virtual' => 'yes',
+			)
+		)
+	);
+	// Harshi calls every customer: the phone number cannot be left out
+	update_option( 'woocommerce_checkout_phone_field', 'required' );
+}
+
+/** The new-order email also goes to the business email. */
+add_filter(
+	'woocommerce_email_recipient_new_order',
+	function ( $recipient ) {
+		$biz = sanitize_email( rtech_ai_settings()['email'] );
+		if ( $biz && false === stripos( (string) $recipient, $biz ) ) {
+			$recipient = trim( $recipient . ',' . $biz, ', ' );
+		}
+		return $recipient;
+	},
+	20
+);
+
+function rtech_ai_whatsapp_number() {
+	return preg_replace( '/\D/', '', rtech_ai_settings()['whatsapp'] );
+}
+
+/** wa.me link with the order: the customer sends it to the shop's WhatsApp with one tap. */
+function rtech_ai_order_whatsapp_url( $order ) {
+	$lines   = array( 'Order request #' . $order->get_order_number() . ' (' . rtech_ai_settings()['brand_name'] . ')' );
+	$lines[] = 'Name: ' . trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+	if ( $order->get_billing_phone() ) {
+		$lines[] = 'Phone: ' . $order->get_billing_phone();
+	}
+	foreach ( $order->get_items() as $item ) {
+		$product = $item->get_product();
+		$lines[] = '- ' . $item->get_quantity() . ' x ' . rtech_ai_plain( $item->get_name() ) . ( $product && $product->get_sku() ? ' (' . $product->get_sku() . ')' : '' );
+	}
+	$lines[] = 'Total: Rs ' . number_format( (float) $order->get_total(), 2 ) . ' incl. GST';
+	return 'https://wa.me/' . rtech_ai_whatsapp_number() . '?text=' . rawurlencode( implode( "\n", $lines ) );
+}
+
+add_action(
+	'woocommerce_thankyou',
+	function ( $order_id ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order || ! rtech_ai_whatsapp_number() ) {
+			return;
+		}
+		echo '<div class="rtech-order-whatsapp" style="margin:1em 0;padding:1em;border:1px solid #25d366;border-radius:6px">';
+		echo '<p><strong>We will call you to confirm your order.</strong> To reach us faster, send it to us on WhatsApp too.</p>';
+		echo '<p><a class="button" href="' . esc_url( rtech_ai_order_whatsapp_url( $order ) ) . '" target="_blank" rel="noopener">Send this order on WhatsApp</a></p>';
+		echo '</div>';
+	},
+	5
+);
+
+/* ---------- Policy pages: privacy rights, one set of delivery terms, one grievance officer ---------- */
+
+/** India's Digital Personal Data Protection Act, 2023: the notice and rights a customer must be told. */
+function rtech_ai_dpdp_html() {
+	$s    = rtech_ai_settings();
+	$who  = trim( $s['grievance'] . ', ' . ( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ), ', ' );
+	$form = get_page_by_path( 'customer-grievance' );
+	$form = ( $form && 'publish' === $form->post_status ) ? ' or the <a href="' . esc_url( get_permalink( $form ) ) . '">Customer Grievance form</a>' : '';
+	$h  = '<h2 id="dpdp">Your rights under the Digital Personal Data Protection Act, 2023</h2>';
+	$h .= '<p>We handle your personal data under India\'s Digital Personal Data Protection Act, 2023 and its Rules. We use the details you give us (name, phone, email, address, GSTIN and what you ask for) only to answer your enquiry, confirm and complete your order, arrange pickup or transport, handle returns, warranty and complaints, and keep the invoices and records the tax laws require. We do not sell your data and do not use it for advertising.</p>';
+	$h .= '<p>You can:</p><ul><li>ask for a summary of the personal data we hold about you and how we use it;</li><li>ask us to correct, complete or update it;</li><li>ask us to erase it when it is no longer needed, unless a law requires us to keep it;</li><li>withdraw any consent you gave, as easily as you gave it (this does not affect what was done before);</li><li>nominate another person to use these rights for you if you die or cannot act yourself;</li><li>complain to us, and if you are not satisfied with our answer, complain to the Data Protection Board of India.</li></ul>';
+	$h .= '<p><strong>How to ask:</strong> ' . rtech_ai_contact_html() . $form . '. The person responsible is ' . esc_html( $who ) . '. We reply within one month.</p>';
+	$h .= '<p><strong>How long we keep it:</strong> invoices, orders and payment records for as long as GST and income-tax laws require (at least 6 years); enquiries and quotes that did not lead to an order are deleted when no longer needed, normally within 3 years of our last contact.</p>';
+	$h .= '<p><strong>Security and breaches:</strong> we protect your data with reasonable security measures. If a breach affects your data, we will tell you and the Data Protection Board as the law requires.</p>';
+	$h .= '<p><strong>Children:</strong> this website is meant for adults and businesses. We do not knowingly collect data of anyone under 18; a parent or guardian can contact us to have it removed.</p>';
+	$h .= '<p><strong>Service providers:</strong> our hosting, email and optional analytics providers may process data for us, some of them outside India, as the law allows.</p>';
+	$h .= '<p><strong>Language:</strong> contact us to receive this notice in Kannada, Hindi or another language of the Eighth Schedule to the Constitution.</p>';
+	return $h;
+}
+
+function rtech_ai_is_page_slug( $slugs ) {
+	if ( ! is_singular( 'page' ) ) {
+		return false;
+	}
+	return in_array( get_post_field( 'post_name', get_queried_object_id() ), (array) $slugs, true );
+}
+
+add_filter(
+	'the_content',
+	function ( $content ) {
+		if ( ! is_singular( 'page' ) || ! in_the_loop() || ! is_main_query() ) {
+			return $content;
+		}
+		$id      = get_queried_object_id();
+		$privacy = (int) get_option( 'wp_page_for_privacy_policy' );
+		if ( ( $id === $privacy || rtech_ai_is_page_slug( 'privacy-policy' ) ) && false === stripos( $content, 'Digital Personal Data Protection' ) ) {
+			return $content . rtech_ai_dpdp_html();
+		}
+		// an older delivery page (7 Sep: "delivery in 24-48 hours", "report within 24 hours") shows the current terms
+		if ( rtech_ai_is_page_slug( rtech_ai_list( rtech_ai_settings()['delivery_pages'] ) ) ) {
+			return '<p>Updated: 25 October 2026.</p>' . rtech_ai_delivery_page_html();
+		}
+		return $content;
+	},
+	20
+);
+
+/** Pages from before named another grievance officer: every page shows the same one. */
+function rtech_ai_fix_grievance( $html ) {
+	$s    = rtech_ai_settings();
+	$old  = trim( $s['grievance_old'] );
+	$name = trim( strtok( $s['grievance'], ',' ) );
+	if ( '' === $old || '' === $name || false === stripos( $html, $old ) ) {
+		return $html;
+	}
+	$word = '/\b' . preg_quote( $old, '/' ) . '\b/i';
+	return preg_replace_callback(
+		'/Grievance Officer.{0,120}?\b' . preg_quote( $old, '/' ) . '\b|\b' . preg_quote( $old, '/' ) . '\b.{0,120}?Grievance Officer/is',
+		function ( $m ) use ( $word, $name ) {
+			return preg_replace( $word, $name, $m[0] );
+		},
+		$html
+	);
+}
+
+/** Pages the plugin wrote before 1.1.0 said "We do not deliver": rewrite them with the current terms. */
+function rtech_ai_refresh_policy_pages() {
+	foreach ( array( 'delivery-and-pickup' => 'rtech_ai_delivery_page_html', 'return-cancellation-policy' => 'rtech_ai_returns_page_html' ) as $slug => $build ) {
+		$page = get_page_by_path( $slug );
+		if ( $page && false !== strpos( $page->post_content, 'We do not deliver.' ) ) {
+			wp_update_post( array( 'ID' => $page->ID, 'post_content' => call_user_func( $build ) ) );
+		}
+	}
+}
 
 /* ---------- One business email on every page ---------- */
 
@@ -1098,13 +1289,17 @@ function rtech_ai_fix_emails( $html ) {
 	if ( 'yes' === $s['hide_gmail'] ) {
 		$html = preg_replace( '/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?:gmail|googlemail)\.com\b/i', $want, $html );
 	}
-	return $html;
+	return rtech_ai_fix_grievance( $html );
 }
 
 add_action(
 	'template_redirect',
 	function () {
 		if ( is_admin() || is_feed() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return;
+		}
+		// the customer's own email shows on these pages: leave every address as it is
+		if ( function_exists( 'is_checkout' ) && ( is_checkout() || is_cart() || is_account_page() ) ) {
 			return;
 		}
 		ob_start( 'rtech_ai_fix_emails' );
@@ -1165,13 +1360,14 @@ add_action(
 				'type'              => 'array',
 				'sanitize_callback' => function ( $in ) {
 					$out = array();
-					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails', 'grievance', 'panel_types', 'tray_types' ) as $k ) {
+					foreach ( array( 'brand_name', 'trade_name', 'street', 'city', 'region', 'postcode', 'email', 'phone', 'home_desc', 'shop_desc', 'about', 'profiles', 'dealer_brands', 'other_brands', 'old_emails', 'grievance', 'panel_types', 'tray_types', 'whatsapp', 'grievance_old', 'delivery_pages' ) as $k ) {
 						$out[ $k ] = isset( $in[ $k ] ) ? sanitize_textarea_field( $in[ $k ] ) : '';
 					}
 					$out['email']    = sanitize_email( $out['email'] );
 					$out['term_seo'] = empty( $in['term_seo'] ) ? 'no' : 'yes';
 					$out['brand_bar'] = empty( $in['brand_bar'] ) ? 'no' : 'yes';
 					$out['hide_gmail'] = empty( $in['hide_gmail'] ) ? 'no' : 'yes';
+					$out['order_request'] = empty( $in['order_request'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -1202,6 +1398,10 @@ function rtech_ai_settings_page() {
 		'grievance'     => 'Grievance officer: name and designation (Returns and Refunds page)',
 		'panel_types'   => 'Panel boards you build (comma separated, for the Custom Panel Boards page)',
 		'tray_types'    => 'Cable trays you make (comma separated)',
+		'order_request' => 'Checkout takes order requests (no online payment): switches on WooCommerce\'s Cash on delivery method once, renamed "Order request", if no payment method is on',
+		'whatsapp'      => 'WhatsApp number for order requests',
+		'grievance_old' => 'Old grievance officer name on older pages, shown as the name above',
+		'delivery_pages' => 'Older delivery pages (slugs, comma separated) that show the current delivery terms instead',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
@@ -1212,7 +1412,7 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail' ), true ) ) {
+		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail', 'order_request' ), true ) ) {
 			echo '<input type="checkbox" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
 		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';

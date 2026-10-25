@@ -189,6 +189,62 @@ if items:
     check("90 m coil" in (g("description") or ""), "feed: description")
 check("1 products listed, 1 in stock" in feed, "feed: count comment")
 
+# 1.1.0: order requests, policy pages
+check("send the order request" in llms and "we book Porter or a courier for you" in llms, "llms.txt: how to order, delivery options")
+
+s, _, ship = get("/shipping-delivery-policy/")
+check("We book transport for you" in ship and "24-48" not in ship, "old delivery policy page shows the current terms")
+s, _, priv = get("/privacy-policy/")
+check("Digital Personal Data Protection Act, 2023" in priv and "Data Protection Board of India" in priv, "privacy page: DPDP rights section")
+check("raghavendra" not in priv.lower() and "Kodandaram Kalavanchi" in priv, "privacy page: one grievance officer")
+s, _, griev = get("/customer-grievance/")
+check("raghavendra" not in griev.lower() and "Grievance Officer: Kodandaram Kalavanchi" in griev, "grievance page: one grievance officer")
+
+import http.cookiejar
+jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+
+def store(method, path, body=None, nonce=None):
+    req = urllib.request.Request(BASE + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Content-Type": "application/json", **({"Nonce": nonce} if nonce else {})})
+    try:
+        with opener.open(req, timeout=60) as r:
+            return r.status, dict(r.headers), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read().decode("utf-8", "replace")
+
+
+st, hdr, _ = store("GET", "/wp-json/wc/store/v1/cart")
+nonce = hdr.get("Nonce") or hdr.get("nonce")
+st, _, prods = store("GET", "/wp-json/wc/store/v1/products?slug=feed-wire")
+pid = json.loads(prods)[0]["id"]
+st, _, out = store("POST", "/wp-json/wc/store/v1/cart/add-item", {"id": pid, "quantity": 2}, nonce)
+check(st in (200, 201), f"cart: add to cart ({st} {out[:200]})")
+addr = {"first_name": "Test", "last_name": "Buyer", "address_1": "1 MG Road", "city": "Bengaluru", "state": "KA",
+        "postcode": "560001", "country": "IN", "email": "buyer.test@gmail.com"}
+st, _, out = store("POST", "/wp-json/wc/store/v1/checkout", {"billing_address": addr, "shipping_address": addr, "payment_method": "cod"}, nonce)
+check(st == 400, f"checkout: refused without a phone number ({st} {out[:200]})")
+addr["phone"] = "9876543210"
+st, _, out = store("POST", "/wp-json/wc/store/v1/checkout", {"billing_address": addr, "shipping_address": addr, "payment_method": "cod"}, nonce)
+print("     checkout:", out[:400])
+order = json.loads(out) if out.startswith("{") else {}
+check(st == 200 and order.get("status") == "processing", f"checkout: order request placed ({st} {order.get('status')})")
+redirect = (order.get("payment_result") or {}).get("redirect_url", "")
+if redirect:
+    req = urllib.request.Request(redirect)
+    with opener.open(req, timeout=60) as r:
+        thanks = r.read().decode("utf-8", "replace")
+    m = re.search(r'href="(https://wa\.me/[^"]+)"', thanks)
+    print("     whatsapp:", m.group(1)[:300] if m else None)
+    check(m is not None and m.group(1).startswith("https://wa.me/918431877469?text=Order%20request%20%23"), "thank-you page: WhatsApp button to the shop's number")
+    check(m is not None and "RT-HAVE-0900" in m.group(1) and "2%20x%20" in m.group(1), "thank-you page: WhatsApp message lists the items")
+    check("buyer.test@gmail.com" in thanks, "thank-you page: the customer's own email is not replaced")
+mails = open(sys.argv[3]).read() if len(sys.argv) > 3 else ""
+print("     mails:", mails[-600:])
+check(any("info@ramtechautomation.co.in" in json.dumps(json.loads(l).get("to")) and "order" in json.loads(l).get("subject", "").lower()
+          for l in mails.splitlines() if l.strip()), "email: new order goes to the business email")
+
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
 mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]

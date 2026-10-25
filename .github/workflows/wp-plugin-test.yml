@@ -54,7 +54,7 @@ jobs:
           fi
           wp plugin list --fields=name,version,status
           mkdir -p wp-content/mu-plugins
-          cp ../wordpress/tests/strip_quote_schema.php wp-content/mu-plugins/
+          cp ../wordpress/tests/strip_quote_schema.php ../wordpress/tests/mail_log.php wp-content/mu-plugins/
           cp -r ../wordpress/rtech-ai-seo wp-content/plugins/
           wp plugin activate rtech-ai-seo
           wp eval-file ../wordpress/tests/setup_site.php
@@ -72,6 +72,14 @@ jobs:
           body=$(wp post list --post_type=page --post_status=publish --name=return-cancellation-policy --field=post_content)
           echo "$body" | grep -q "Proprietor, RAMTECH AUTOMATION" && echo "$body" | grep -q "within 7 business days" || { echo "::error::own returns page not filled with the new terms"; exit 1; }
           wp option get rtech_ai_returns_backup --format=json | grep -q "Old policy text from September" || { echo "::error::old returns text not kept"; exit 1; }
+          # 1.1.0: order requests through WooCommerce's Cash on delivery method, phone required
+          cod=$(wp option get woocommerce_cod_settings --format=json); echo "cod: $cod"
+          echo "$cod" | grep -q '"enabled":"yes"' && echo "$cod" | grep -q 'Order request' && echo "$cod" | grep -q '"enable_for_virtual":"yes"' || { echo "::error::order requests not switched on ($cod)"; exit 1; }
+          [ "$(wp option get woocommerce_checkout_phone_field)" = required ] || { echo "::error::phone not required at checkout"; exit 1; }
+          body=$(wp post list --post_type=page --post_status=publish --name=delivery-and-pickup --field=post_content)
+          echo "$body" | grep -q "We book transport for you" && ! echo "$body" | grep -q "We do not deliver" || { echo "::error::published delivery page not updated"; exit 1; }
+          body=$(wp post list --post_type=page --post_status=publish --name=return-cancellation-policy --field=post_content)
+          echo "$body" | grep -q "ask us to book Porter or a courier" || { echo "::error::returns page delivery section not updated"; exit 1; }
 
       - name: Check the pages
         run: |
@@ -85,13 +93,13 @@ jobs:
           # published, as the owner would: the shop-wide line, business data and llms.txt then mention it
           wp post update $(wp post list --post_type=page --post_status=draft --name=custom-panel-boards-cable-trays --field=ID) --post_status=publish
           wp transient delete rtech_ai_llms_txt
-          python3 ../wordpress/tests/check_pages.py http://127.0.0.1:8080 wp-content/debug.log
+          python3 ../wordpress/tests/check_pages.py http://127.0.0.1:8080 wp-content/debug.log wp-content/mail.log
           n=$(wp post list --post_type=page --post_status=draft --name=brands-we-supply --format=count)
           echo "draft brands pages: $n"
           if [ "$n" != "1" ]; then echo "::error::draft Brands We Supply page: expected 1, got $n"; exit 1; fi
           wp post list --post_type=page --post_status=draft --name=brands-we-supply --field=post_content | head -c 1500
           for slug in delivery-and-pickup; do
-            body=$(wp post list --post_type=page --post_status=draft --name=$slug --field=post_content)
+            body=$(wp post list --post_type=page --post_status=publish --name=$slug --field=post_content)
             echo "$slug: $(echo "$body" | head -c 300)"
             case "$slug" in
               delivery-and-pickup) want="send your own transport" ;;
