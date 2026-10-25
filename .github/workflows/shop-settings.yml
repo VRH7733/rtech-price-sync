@@ -1,7 +1,8 @@
 name: shop-settings
 
 # Manual, read-only: how the shop's checkout handles delivery (shipping zones, their areas and
-# methods with costs) and which payment methods are on, through the WooCommerce REST API.
+# methods with costs), which payment methods are on, and the latest orders' number, status and
+# date (no customer details), through the WooCommerce REST API.
 # Results are annotations on the run. Nothing is changed on the shop.
 on:
   workflow_dispatch:
@@ -34,4 +35,6 @@ jobs:
             m=$(api "shipping/zones/$z/methods" | jq -c '[.[] | {title, method_id, enabled, cost: (.settings.cost.value // null), min_amount: (.settings.min_amount.value // null)}]' 2>/dev/null | head -c 700)
             echo "::notice title=zone $z::areas $loc methods $m"
           done
+          # recent orders: number, status, payment method and date only (no names, phones or addresses: public log)
+          echo "::notice title=orders::$(api 'orders?per_page=5&orderby=date&order=desc' | jq -c 'if type=="array" then [.[] | {id, status, payment_method_title, date_created, items: (.line_items | length)}] else . end' 2>/dev/null | head -c 900)"
           pg=$(api payment_gateways); echo "::notice title=payments::$(echo "$pg" | jq -c "if type==\"array\" then [.[] | {id, title, enabled}] else . end" 2>/dev/null | head -c 900)"
