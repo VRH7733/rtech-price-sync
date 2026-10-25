@@ -444,3 +444,36 @@ def test_name_route_needs_two_naming_words():
     t = "Standard by Havells Combined Plate 4 M IVY Series Ivy Crest Cubes"
     assert not bi.name_match("4 M Plate", t, "Havells")
     assert bi.name_match("Reo Elegant 2 M Fan Regulator", "Havells Reo Elegant 2 M Fan Regulator", "Havells")
+
+
+def test_site_with_its_own_sitemaps_and_path_reads_only_those():
+    from types import SimpleNamespace as NS
+    index = (b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+             b'<url><loc>https://www.se.com/in/en/product/A9N18367/mcb</loc></url>'
+             b'<url><loc>https://www.se.com/fr/fr/product/A9N18367/mcb</loc></url></urlset>')
+    calls = []
+
+    class FakeF:
+        cfg = NS(timeout_seconds=5, min_delay_seconds=0)
+        session = NS(get=lambda *a, **k: NS(status_code=200, url="https://www.se.com/robots.txt", history=[]))
+
+        def _headers(self):
+            return {}
+
+        def get(self, url):
+            calls.append(url)
+            if url.endswith("robots.txt"):
+                return _FR("ok", 200, text="Sitemap: https://www.se.com/fr/fr/sitemap-cms.xml")
+            return _FR("ok", 200, content=index, text="")
+
+    site, roots, path = bi.site_cfg(bi.BRANDS["schneider"]["sites"][0])
+    urls, n, _ = bi.sitemap_urls(FakeF(), site, print, roots=roots, path=path)
+    assert urls == ["https://www.se.com/in/en/product/A9N18367/mcb"]
+    assert "https://www.se.com/fr/fr/sitemap-cms.xml" not in calls  # robots.txt still read, its list not used
+    assert calls[0].endswith("robots.txt")
+    assert bi.site_cfg("https://atomberg.com") == ("https://atomberg.com", [], "")
+
+
+def test_new_brands_have_sites_and_names():
+    for key in ("anchor", "wipro", "philips", "schneider", "orient", "crompton", "hager", "atomberg", "usha"):
+        assert bi.BRANDS[key]["names"] and bi.BRANDS[key]["sites"]

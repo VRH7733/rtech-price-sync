@@ -59,7 +59,29 @@ BRANDS = {
     # Finolex Cables (wires) and Finolex Industries (pipes, fittings) are separate companies
     "finolex": {"names": ["Finolex"], "sites": ["https://www.finolex.com", "https://www.finolexpipes.com"]},
     "gm": {"names": ["GM"], "sites": ["https://www.gmmodular.com"]},
+    # brands added to the shop on 24 Oct 2026; robots.txt of each read on 25 Oct (all allow product pages)
+    "anchor": {"names": ["Anchor", "Anchor by Panasonic", "Panasonic"], "sites": ["https://lsin.panasonic.com"]},
+    "wipro": {"names": ["Wipro"], "sites": ["https://www.wiproconsumerlighting.com"]},
+    # the consumer catalogue only; robots.txt also lists the professional (B2B) one
+    "philips": {"names": ["Philips"], "sites": [{"url": "https://www.lighting.philips.co.in", "sitemaps": [
+        "https://www.lighting.philips.co.in/consumer/sitemap-b2c-philips-lighting-in-index-sitemapindex_en_IN.xml"]}]},
+    # se.com's robots.txt lists every country; only the India product sitemap and /in/en/ pages
+    "schneider": {"names": ["Schneider", "Schneider Electric"], "sites": [{"url": "https://www.se.com", "path": "/in/en/",
+        "sitemaps": ["https://www.se.com/in/en/product/google-product-sitemapindex-IN-en.xml"]}]},
+    "orient": {"names": ["Orient", "Orient Electric"], "sites": ["https://www.orientelectric.com"]},
+    "crompton": {"names": ["Crompton"], "sites": ["https://www.crompton.co.in"]},
+    "hager": {"names": ["Hager"], "sites": ["https://www.hager.co.in"]},
+    "atomberg": {"names": ["Atomberg"], "sites": ["https://atomberg.com"]},
+    "usha": {"names": ["Usha"], "sites": ["https://www.usha.com"]},
 }
+
+
+def site_cfg(site) -> tuple:
+    """A BRANDS site entry: a plain address, or {"url", "sitemaps" (used instead of the ones robots.txt
+    lists), "path" (only pages under it)}."""
+    if isinstance(site, str):
+        return site, [], ""
+    return site["url"], list(site.get("sitemaps", [])), site.get("path", "")
 FORBIDDEN = {"regular_price", "sale_price", "price", "stock_status", "stock_quantity", "manage_stock", "type",
              "external_url", "button_text", "status", "sku", "name"}
 SKIP_SITEMAP = re.compile(r"blog|news|post|career|investor|media|press|event|author|tag|video|locator|"
@@ -590,11 +612,11 @@ def resolve_site(fetcher, site, log):
     return final
 
 
-def sitemap_urls(fetcher, site, log, max_files=120):
+def sitemap_urls(fetcher, site, log, max_files=120, roots=None, path=""):
     site = resolve_site(fetcher, site, log)
     fr = fetcher.get(site + "/robots.txt")
     _check(fr, "robots.txt")
-    roots = re.findall(r"(?im)^\s*sitemap\s*:\s*(\S+)", fr.text if fr.status == "ok" else "")
+    roots = list(roots or []) or re.findall(r"(?im)^\s*sitemap\s*:\s*(\S+)", fr.text if fr.status == "ok" else "")
     roots = roots or [site + "/sitemap.xml", site + "/sitemap_index.xml"]
     from rtech_sync.matching import parse_sitemap
     from rtech_sync.urlcheck import same_site
@@ -614,7 +636,7 @@ def sitemap_urls(fetcher, site, log, max_files=120):
         except Exception as e:
             log(f"  sitemap {sm}: cannot parse ({type(e).__name__})")
             continue
-        got = [u for u in got if same_site(site, u)]
+        got = [u for u in got if same_site(site, u) and urlsplit(u).path.startswith(path)]
         try:
             images.update(sitemap_images(fr.content or fr.text.encode()))
         except Exception:
@@ -796,11 +818,12 @@ def cmd_crawl(a):
     except Refused as e:
         summary["recheck_stopped"] = str(e)
         log(f"STOP recheck: {e}")
-    for site in BRANDS[key]["sites"]:
+    for site_entry in BRANDS[key]["sites"]:
+        site, roots, path = site_cfg(site_entry)
         s = summary["sites"][site] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
                                       "images_checked": 0, "stopped": ""}
         try:
-            urls, n, simg = sitemap_urls(fetcher, site, log)
+            urls, n, simg = sitemap_urls(fetcher, site, log, roots=roots, path=path)
             s["sitemap_files"], s["pages_listed"] = n, len(urls)
             if not urls:
                 s["stopped"] = "no published sitemap with pages"

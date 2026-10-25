@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       brands:
-        description: "space-separated: havells legrand polycab kei rrkabel finolex gm"
+        description: "space-separated: havells legrand polycab kei rrkabel finolex gm anchor wipro philips schneider orient crompton hager atomberg usha"
         default: "havells legrand polycab kei rrkabel finolex gm"
       max_pages:
         description: "max brand pages fetched per brand this run (6 s each)"
@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        brand: [havells, legrand, polycab, kei, rrkabel, finolex, gm]
+        brand: [havells, legrand, polycab, kei, rrkabel, finolex, gm, anchor, wipro, philips, schneider, orient, crompton, hager, atomberg, usha]
     env:
       PYTHONPATH: src
       RTECH_CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
