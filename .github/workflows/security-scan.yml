@@ -1,0 +1,41 @@
+name: security-scan
+
+# Manual, read-only: checks the owner's own shop from outside (versions, public files, user-name
+# leaks, XML-RPC, headers, HTTPS). About 30 ordinary requests, 1.5 s apart. The findings go to
+# the PRIVATE data repo (security/scan.md), never to this public log.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: VRH7733/rtech-price-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: pd
+
+      - name: Scan
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+        run: python3 tools/security_scan.py pd/security/scan.md
+
+      - name: Save the report to the private data repo
+        if: always()
+        run: |
+          cd pd
+          git config user.name "price-sync-bot"
+          git config user.email "price-sync-bot@users.noreply.github.com"
+          git add security/scan.md 2>/dev/null || exit 0
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -m "security check $(TZ=Asia/Kolkata date +%F)"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
