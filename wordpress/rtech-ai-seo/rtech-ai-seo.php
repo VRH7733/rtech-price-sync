@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.6
+ * Version:           1.0.7
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.6' );
+define( 'RTECH_AI_VERSION', '1.0.7' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -667,7 +667,7 @@ function rtech_ai_llms_txt() {
 	}
 
 	$pages = array();
-	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'custom-panel-boards-cable-trays', 'delivery-and-pickup', 'returns-and-refunds', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
+	foreach ( array( 'about', 'about-us', 'contact', 'contact-us', 'shipping', 'shipping-policy', 'delivery', 'refund', 'refund-policy', 'returns', 'return-policy', 'refund_returns', 'terms', 'terms-and-conditions', 'faq', 'faqs', 'brands-we-supply', 'custom-panel-boards-cable-trays', 'delivery-and-pickup', 'return-cancellation-policy', 'returns-and-refunds', 'upload-boq', 'bulk-order', 'request-a-quote' ) as $slug ) {
 		$p = get_page_by_path( $slug );
 		if ( $p && 'publish' === $p->post_status ) {
 			$pages[ $p->ID ] = '- [' . rtech_ai_plain( get_the_title( $p ) ) . '](' . get_permalink( $p ) . ')';
@@ -845,11 +845,45 @@ function rtech_ai_returns_page_html() {
 	$h .= '<h2>Replacement</h2><ul><li>We replace a wrong or faulty item once, and we arrange the transport for that replacement.</li><li>If the replacement also has a problem, you can collect another replacement from our office, or ask for a refund.</li></ul>';
 	$h .= '<h2>Refund</h2><p>Refunds are paid to the original payment method within 7 business days after we receive and check the returned item.</p>';
 	$h .= '<h2>What we cannot take back</h2><ul><li>Wires and cables cut to the length you ordered</li><li>Items that have been installed or used</li><li>Items damaged by wrong installation, wrong voltage or rough handling</li><li>Items ordered specially for you</li><li>Items returned without the original box and invoice</li><li>Items you no longer want, if there is nothing wrong with them</li></ul>';
+	$delivery = get_page_by_path( 'delivery-and-pickup' );
+	$h       .= '<h2>Delivery</h2><p>We do not deliver. You collect your order from our office, or send your own vehicle, courier or Porter, and we load it for you at no charge. Please check the goods at loading; after that they travel at the buyer\'s risk.' . ( ( $delivery && 'publish' === $delivery->post_status ) ? ' <a href="' . esc_url( get_permalink( $delivery ) ) . '">Delivery and pickup details</a>.' : '' ) . '</p>';
 	$h .= '<h2>Cancelling an order</h2><p>You can cancel an order before the goods are loaded or handed over. We refund the full amount within 7 business days.</p>';
 	$h .= '<h2>Manufacturer\'s warranty</h2><p>Products carry the brand\'s own warranty. Warranty claims are handled under the brand\'s warranty terms; we help you with the invoice and the claim.</p>';
 	$who = trim( $s['grievance'] . ', ' . ( $s['trade_name'] ? $s['trade_name'] : $s['brand_name'] ), ', ' );
 	$h  .= '<h2>Grievance officer</h2><p>' . esc_html( $who ) . ', ' . esc_html( rtech_ai_address_line() ) . '. ' . rtech_ai_contact_html() . '. We acknowledge every complaint within 48 hours and resolve it within one month.</p>';
 	return $h;
+}
+
+/**
+ * One returns page (Harshi, 25 Oct 2026: "make a plugin so you do it all"). The site had three:
+ * WooCommerce's sample "Refund and Returns Policy" (published by mistake, says 30 days), the shop's
+ * own "Return & Cancellation Policy" (live since 7 Sep), and the plugin's "Returns and Refunds" draft.
+ * Keep the own page's address and put the owner's terms in it; move the other two to Trash.
+ * Everything here can be undone: Trash keeps pages 30 days, the old text is kept as a revision and
+ * in the option rtech_ai_returns_backup. Runs once.
+ */
+function rtech_ai_one_returns_page() {
+	if ( get_option( 'rtech_ai_returns_done' ) ) {
+		return;
+	}
+	$own = get_page_by_path( 'return-cancellation-policy' );
+	if ( ! $own || 'publish' !== $own->post_status ) {
+		rtech_ai_add_draft_page( 'returns-and-refunds', 'Returns and Refunds', rtech_ai_returns_page_html() );
+		return; // no page of the shop's own to fill: leave the draft for the owner, as before
+	}
+	update_option( 'rtech_ai_returns_done', time() );
+	update_option( 'rtech_ai_returns_backup', array( 'ID' => $own->ID, 'content' => $own->post_content, 'saved' => time() ), false );
+	wp_update_post( array( 'ID' => $own->ID, 'post_content' => rtech_ai_returns_page_html() ) );
+
+	$sample = get_page_by_path( 'refund_returns' );
+	// only WooCommerce's untouched sample text, never a page someone wrote
+	if ( $sample && false !== stripos( $sample->post_content, 'This is a sample page' ) ) {
+		wp_trash_post( $sample->ID );
+	}
+	$draft = get_page_by_path( 'returns-and-refunds' );
+	if ( $draft && 'draft' === $draft->post_status ) {
+		wp_trash_post( $draft->ID );
+	}
 }
 
 /** New site content goes in as a DRAFT: the owner reads and publishes it. Never touches an existing page. */
@@ -878,7 +912,7 @@ add_action(
 		delete_transient( 'rtech_ai_llms_txt' );
 		rtech_ai_add_draft_page( 'brands-we-supply', 'Brands We Supply', rtech_ai_brands_page_html() );
 		rtech_ai_add_draft_page( 'delivery-and-pickup', 'Delivery and Pickup', rtech_ai_delivery_page_html() );
-		rtech_ai_add_draft_page( 'returns-and-refunds', 'Returns and Refunds', rtech_ai_returns_page_html() );
+		rtech_ai_one_returns_page();
 		rtech_ai_add_draft_page( 'custom-panel-boards-cable-trays', 'Custom Panel Boards and Cable Trays in Bengaluru', rtech_ai_services_page_html() );
 		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache's own "Purge All"; nothing happens without it
 	},

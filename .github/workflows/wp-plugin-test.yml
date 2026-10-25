@@ -62,6 +62,16 @@ jobs:
           wp wc tool run install_pages --user=admin || true
           wp rewrite flush --quiet
           cp ../wordpress/tests/router.php .
+          wp eval-file ../wordpress/tests/live_returns_pages.php
+          wp eval 'echo get_option("rtech_ai_version"), "\n";'   # this load runs the update steps
+          for slug in refund_returns returns-and-refunds; do
+            st=$(wp post list --post_type=page --post_status=any,trash --name="${slug}__trashed" --field=post_status; wp post list --post_type=page --post_status=any --name="$slug" --field=post_status)
+            echo "$slug: $st"
+            case "$st" in *publish*|*draft*) echo "::error::$slug was not moved to Trash ($st)"; exit 1 ;; esac
+          done
+          body=$(wp post list --post_type=page --post_status=publish --name=return-cancellation-policy --field=post_content)
+          echo "$body" | grep -q "Proprietor, RAMTECH AUTOMATION" && echo "$body" | grep -q "within 7 business days" || { echo "::error::own returns page not filled with the new terms"; exit 1; }
+          wp option get rtech_ai_returns_backup --format=json | grep -q "Old policy text from September" || { echo "::error::old returns text not kept"; exit 1; }
 
       - name: Check the pages
         run: |
@@ -80,7 +90,7 @@ jobs:
           echo "draft brands pages: $n"
           if [ "$n" != "1" ]; then echo "::error::draft Brands We Supply page: expected 1, got $n"; exit 1; fi
           wp post list --post_type=page --post_status=draft --name=brands-we-supply --field=post_content | head -c 1500
-          for slug in delivery-and-pickup returns-and-refunds; do
+          for slug in delivery-and-pickup; do
             body=$(wp post list --post_type=page --post_status=draft --name=$slug --field=post_content)
             echo "$slug: $(echo "$body" | head -c 300)"
             case "$slug" in
