@@ -248,6 +248,36 @@ print("     mails:", mails[-600:])
 check(any("info@ramtechautomation.co.in" in json.dumps(json.loads(l).get("to")) and "order" in json.loads(l).get("subject", "").lower()
           for l in mails.splitlines() if l.strip()), "email: new order goes to the business email")
 
+# 1.1.1: security hardening
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def raw(path, method="GET", data=None, ctype=None):
+    req = urllib.request.Request(BASE + path, method=method, data=data, headers={"Content-Type": ctype} if ctype else {})
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=60) as r:
+            return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read().decode("utf-8", "replace")
+
+
+st, h, body = raw("/")
+print("     home headers:", {k: v for k, v in h.items() if k.startswith("x-") or k in ("referrer-policy", "strict-transport-security")})
+check(h.get("x-content-type-options") == "nosniff" and h.get("x-frame-options") == "SAMEORIGIN"
+      and h.get("referrer-policy") == "strict-origin-when-cross-origin", "security: headers sent")
+check("x-powered-by" not in h and "x-pingback" not in h, f"security: no PHP version, no pingback header ({h.get('x-powered-by')})")
+check('name="generator" content="WordPress' not in body, "security: WordPress version not in the page")
+st, _, body = raw("/wp-json/wp/v2/users")
+check(st == 404 and '"admin"' not in body, f"security: user names not listed ({st})")
+st, h, _ = raw("/?author=1")
+check(st in (301, 302) and "/author/" not in h.get("location", ""), f"security: ?author=1 does not reveal a user name ({st} {h.get('location')})")
+xml = b'<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>'
+st, _, body = raw("/xmlrpc.php", "POST", xml, "text/xml")
+print("     xmlrpc:", st, body[:200])
+check("wp.getUsersBlogs" not in body and "pingback.ping" not in body, "security: XML-RPC methods off")
+
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
 mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]

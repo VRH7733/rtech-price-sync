@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       RTech AI & Search Helper
- * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, and consistent policy pages. Changes no prices, stock or product content.
- * Version:           1.1.0
+ * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, consistent policy pages and basic security hardening. Changes no prices, stock or product content.
+ * Version:           1.1.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.1.0' );
+define( 'RTECH_AI_VERSION', '1.1.1' );
 define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
@@ -66,6 +66,9 @@ function rtech_ai_settings() {
 		'grievance_old' => 'raghavendra',
 		// older delivery pages whose text contradicts the delivery terms: they show the current terms
 		'delivery_pages' => 'shipping-delivery-policy',
+		// "yes": less for attackers to work with (25 Oct 2026 outside check): login user names not
+		// listed, XML-RPC off (kept on when Jetpack is active), security headers, no version numbers
+		'hardening'      => 'yes',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -898,7 +901,15 @@ add_action(
 		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
 			define( 'DONOTCACHEPAGE', true );
 		}
-		rtech_ai_print_feed();
+		// built at most every 30 minutes: the feed reads every priced product, and anyone can request it
+		$xml = get_transient( 'rtech_ai_feed' );
+		if ( ! is_string( $xml ) || '' === $xml ) {
+			ob_start();
+			rtech_ai_print_feed();
+			$xml = ob_get_clean();
+			set_transient( 'rtech_ai_feed', $xml, 30 * MINUTE_IN_SECONDS );
+		}
+		echo $xml; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped per field when built
 		exit;
 	},
 	0
@@ -1275,6 +1286,89 @@ function rtech_ai_refresh_policy_pages() {
 	}
 }
 
+/* ---------- Security hardening (setting "hardening") ---------- */
+
+/**
+ * The 25 Oct 2026 outside check found: login user names listed at /wp-json/wp/v2/users and
+ * through /?author=1, XML-RPC switched on, no security headers, the PHP and WordPress versions
+ * shown. Each is a small help to password-guessing and targeted attacks; none is needed by the shop.
+ */
+function rtech_ai_hardening_on() {
+	return 'yes' === rtech_ai_settings()['hardening'];
+}
+
+add_action(
+	'send_headers',
+	function () {
+		if ( headers_sent() || ! rtech_ai_hardening_on() ) {
+			return;
+		}
+		header_remove( 'X-Powered-By' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'X-Frame-Options: SAMEORIGIN' );
+		header( 'Referrer-Policy: strict-origin-when-cross-origin' );
+		if ( 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
+			header( 'Strict-Transport-Security: max-age=15552000' ); // 180 days, this host only
+		}
+	}
+);
+
+add_action(
+	'init',
+	function () {
+		if ( ! rtech_ai_hardening_on() ) {
+			return;
+		}
+		remove_action( 'wp_head', 'wp_generator' );
+		add_filter( 'the_generator', '__return_empty_string' );
+		// Jetpack talks to the site through XML-RPC: leave it on when Jetpack is active
+		if ( ! class_exists( 'Jetpack' ) ) {
+			add_filter( 'xmlrpc_enabled', '__return_false' );
+			add_filter( 'xmlrpc_methods', '__return_empty_array' );
+			add_filter(
+				'wp_headers',
+				function ( $headers ) {
+					unset( $headers['X-Pingback'] );
+					return $headers;
+				}
+			);
+			remove_action( 'wp_head', 'rsd_link' );
+		}
+	},
+	1
+);
+
+/** Login user names: not listed to visitors (logged-in editors still see them). */
+add_filter(
+	'rest_endpoints',
+	function ( $endpoints ) {
+		if ( ! rtech_ai_hardening_on() || is_user_logged_in() ) {
+			return $endpoints;
+		}
+		foreach ( array_keys( $endpoints ) as $route ) {
+			if ( 0 === strpos( $route, '/wp/v2/users' ) ) {
+				unset( $endpoints[ $route ] );
+			}
+		}
+		return $endpoints;
+	}
+);
+
+/** /?author=1 and /author/<name>/ reveal a login name: send visitors to the home page instead. */
+add_action(
+	'template_redirect',
+	function () {
+		if ( ! rtech_ai_hardening_on() || is_user_logged_in() ) {
+			return;
+		}
+		if ( isset( $_GET['author'] ) || is_author() ) { // phpcs:ignore WordPress.Security.NonceVerification
+			wp_safe_redirect( home_url( '/' ), 301 );
+			exit;
+		}
+	},
+	1
+);
+
 /* ---------- One business email on every page ---------- */
 
 /** Swap the old addresses (and any Gmail address) for the business email in a page's HTML. */
@@ -1371,6 +1465,7 @@ add_action(
 					$out['brand_bar'] = empty( $in['brand_bar'] ) ? 'no' : 'yes';
 					$out['hide_gmail'] = empty( $in['hide_gmail'] ) ? 'no' : 'yes';
 					$out['order_request'] = empty( $in['order_request'] ) ? 'no' : 'yes';
+					$out['hardening'] = empty( $in['hardening'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -1404,6 +1499,7 @@ function rtech_ai_settings_page() {
 		'order_request' => 'Checkout takes order requests (no online payment): switches on WooCommerce\'s Cash on delivery method once, renamed "Order request", if no payment method is on',
 		'whatsapp'      => 'WhatsApp number for order requests',
 		'grievance_old' => 'Old grievance officer name on older pages, shown as the name above',
+		'hardening'     => 'Security: hide login user names, switch off XML-RPC (unless Jetpack is active), send security headers, hide version numbers',
 		'delivery_pages' => 'Older delivery pages (slugs, comma separated) that show the current delivery terms instead',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
@@ -1415,7 +1511,7 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail', 'order_request' ), true ) ) {
+		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail', 'order_request', 'hardening' ), true ) ) {
 			echo '<input type="checkbox" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
 		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';
