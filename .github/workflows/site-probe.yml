@@ -13,6 +13,10 @@ on:
         description: "Comma-separated words to count on each page (case-insensitive)"
         required: false
         default: ""
+      text:
+        description: "yes = also print each page's readable text (main content), in parts"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -28,6 +32,7 @@ jobs:
           CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
           URLS: ${{ inputs.urls }}
           FIND: ${{ inputs.find }}
+          TEXT: ${{ inputs.text }}
         run: |
           base="${WC_URL%/}"
           ua="rtech-price-sync/0.1 (+mailto:$CONTACT_EMAIL)"
@@ -51,6 +56,20 @@ jobs:
               [ -n "$w" ] && found="$found $w=$(grep -oi -- "$w" /tmp/body 2>/dev/null | wc -l)"
             done
             echo "::notice::$u => $out | title: $title | marks:$marks | emails: $emails | found:$found"
+            if [ "$TEXT" = "yes" ] && [ -s /tmp/body ]; then
+              python3 - "$u" <<'PY'
+          import html, re, sys
+          b = open("/tmp/body", encoding="utf-8", errors="replace").read()
+          m = re.search(r"<main.*?</main>", b, re.S) or re.search(r"<article.*?</article>", b, re.S)
+          b = m.group(0) if m else b
+          b = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", b, flags=re.S)
+          b = re.sub(r"</(p|li|h\d|tr|div)>", " | ", b)
+          t = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", b))).strip()
+          t = re.sub(r"[\w.+-]+@gmail\.com", "[gmail hidden]", t)
+          for i in range(0, min(len(t), 24000), 3000):
+              print(f"::notice title=text {i // 3000 + 1} {sys.argv[1][-40:]}::" + t[i:i + 3000].replace("%", "%25"))
+          PY
+            fi
             rm -f /tmp/body
             sleep 3
           done
