@@ -34,4 +34,4 @@ jobs:
             m=$(api "shipping/zones/$z/methods" | jq -c '[.[] | {title, method_id, enabled, cost: (.settings.cost.value // null), min_amount: (.settings.min_amount.value // null)}]' 2>/dev/null | head -c 700)
             echo "::notice title=zone $z::areas $loc methods $m"
           done
-          echo "::notice title=payments::$(api payment_gateways | jq -c '[.[] | select(.enabled) | .title]' 2>/dev/null)"
+          pg=$(api payment_gateways); echo "::notice title=payments::$(echo "$pg" | jq -c "if type==\"array\" then [.[] | {id, title, enabled}] else . end" 2>/dev/null | head -c 900)"
