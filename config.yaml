@@ -47,9 +47,13 @@ pricing:
   # metre; most IndustryBuying-only ones were Rs 50-250 (4-5x, up to Rs 1.36 crore for one drum).
   # A single-site cable above this, or with no known length, shows Request a Quote, flagged.
   cable_max_per_sqmm_metre: 50
-  # Owner, 18 Oct 2026: "get the cheapest of moglix and homerun, for that add one % dis":
-  # published price = cheapest x 0.99, rounded up to the rupee.
-  default_markup_pct: -1
+  # Owner, 25 Oct 2026: "take the cheapest in moglix,homerun and add 3.24% discount" (was 1% from
+  # 18 Oct): published price = cheapest x 0.9676, rounded up to the rupee.
+  default_markup_pct: -3.24
+  # Owner, 25 Oct 2026: "if the cost difference between the websites is >5% flag it (just make it
+  # check availability)": Moglix and HomeRun further apart than this => no price, flagged.
+  # Compared after the 2x listing-error guard above.
+  cheapest_spread_quote_pct: 5
   default_gst_pct: 18
   stale_days: 6                    # no validated price for this many days => hide price (two
                                    # missed 3-day checks in a row; one miss keeps the price)

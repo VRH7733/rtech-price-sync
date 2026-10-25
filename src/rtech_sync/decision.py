@@ -8,6 +8,7 @@ Rules (set by the shop owner):
                                        when a marketplace (fetched) is cheaper than it
 Rule "cheapest" (owner's go-live decision, 15 Oct 2026; config pricing.rule):
   * publish the CHEAPEST trusted source (+ markup); one source is enough, the spread is reported
+  * two or more sources more than cheapest_spread_quote_pct apart -> no price ("spread_over_pct")
   * a cheapest price that is below 1/outlier_ratio of BOTH of two other sources is a likely wrong
     match: ignored ("low_outlier_ignored:<source>")
   * a move > big_move_pct vs the live price is held one day ("big_move_held") and published when
@@ -210,6 +211,13 @@ def _decide_cheapest(row: Row, results: list, state: PriceState, cfg: PricingCfg
         if len(usable) >= 2:
             d.spread_pct = spread_pct([r.price for r in usable])
         candidate = apply_markup(cheapest.price, markup)
+        limit = cfg.cheapest_spread_quote_pct
+        if limit and limit > 0 and d.spread_pct is not None and d.spread_pct > limit:
+            # owner, 25 Oct 2026: sites more than 5% apart => Check Availability, flagged
+            d.flags.append(f"spread_over_pct:{d.spread_pct.quantize(Decimal('0.1'))}")
+            d.action, d.price, d.refreshed = "hide", None, True
+            d.note = "the sites differ by more than the allowed spread"
+            return d
 
     if candidate is not None and row.cost_floor is not None and candidate < row.cost_floor:
         d.flags.append("below_cost_floor")

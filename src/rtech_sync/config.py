@@ -19,6 +19,9 @@ class ConfigError(RuntimeError):
 @dataclass(frozen=True)
 class PricingCfg:
     spread_flag_pct: Decimal = Decimal("5")
+    # cheapest rule: two or more sites further apart than this => no price (Check Availability),
+    # flagged spread_over_pct. 0 = off.
+    cheapest_spread_quote_pct: Decimal = Decimal("0")
     big_move_pct: Decimal = Decimal("15")
     big_move_holds: bool = False
     single_source_max_move_pct: Decimal = Decimal("5")
@@ -127,6 +130,7 @@ def load_config(path: str | Path = "config.yaml", env: Optional[dict] = None) ->
 
     pricing = PricingCfg(
         spread_flag_pct=_dec(p, "spread_flag_pct", Decimal("5")),
+        cheapest_spread_quote_pct=_dec(p, "cheapest_spread_quote_pct", Decimal("0")),
         big_move_pct=_dec(p, "big_move_pct", Decimal("15")),
         big_move_holds=bool(p.get("big_move_holds", False)),
         single_source_max_move_pct=_dec(p, "single_source_max_move_pct", Decimal("5")),

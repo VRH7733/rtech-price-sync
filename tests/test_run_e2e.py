@@ -29,7 +29,7 @@ def cfg():
     # tested in test_live_rule_*)
     c = dataclasses.replace(c, fetch=dataclasses.replace(c.fetch, check_every_days=1, skip_sources=()),
                             pricing=dataclasses.replace(c.pricing, stale_days=3, default_markup_pct=D(0),
-                                                        never_keep_sources=()))
+                                                        never_keep_sources=(), cheapest_spread_quote_pct=D(0)))
     # pages in these tests say "Inclusive of all taxes", but make the assumption explicit too
     return c
 
@@ -412,13 +412,31 @@ def test_live_config_keeps_blocked_prices_30_days():
     assert live_cfg().pricing.keep_blocked_days == 30
 
 
-def test_live_rule_cheapest_of_moglix_and_homerun_less_one_percent_and_no_industrybuying():
+def test_live_rule_cheapest_of_moglix_and_homerun_less_3_24_percent_and_no_industrybuying():
+    # owner, 25 Oct 2026: "take the cheapest in moglix,homerun and add 3.24% discount"
     c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
-    assert c.fetch.skip_sources == ("industrybuying",) and c.pricing.default_markup_pct == D(-1)
+    assert c.fetch.skip_sources == ("industrybuying",) and c.pricing.default_markup_pct == D("-3.24")
     f = FakeFetcher(pages(1000, 500, 1020))  # IB would be cheaper, but it is not asked
     rr = go(c, [make_row()], {"version": 1, "items": {}}, f, FakeWoo(), publish=True)
     assert not any("industrybuying" in u for u in f.calls)
-    assert rr.items[0]["decision"].price == D(990)  # Rs 1,000 x 0.99
+    assert rr.items[0]["decision"].price == D(968)  # Rs 1,000 x 0.9676 = 967.6, rounded up
+
+
+def test_live_rule_sites_more_than_5_percent_apart_show_check_availability():
+    # owner, 25 Oct 2026: "if the cost difference between the websites is >5% flag it (just make
+    # it check availability)"
+    c = dataclasses.replace(live_cfg(), fetch=dataclasses.replace(live_cfg().fetch, check_every_days=1))
+    assert c.pricing.cheapest_spread_quote_pct == D(5)
+    rr = go(c, [make_row()], {"version": 1, "items": {}}, FakeFetcher(pages(1000, None, 1060)), FakeWoo(),
+            publish=True)
+    d = rr.items[0]["decision"]
+    assert d.action == "hide" and d.price is None and d.flags == ["spread_over_pct:6.0"]
+    rr = go(c, [make_row()], {"version": 1, "items": {}}, FakeFetcher(pages(1000, None, 1050)), FakeWoo(),
+            publish=True)
+    assert rr.items[0]["decision"].price == D(968)  # exactly 5% apart is still priced
+    rr = go(c, [make_row()], {"version": 1, "items": {}}, FakeFetcher(pages(1000, None, 2500)), FakeWoo(),
+            publish=True)
+    assert rr.items[0]["decision"].price == D(968)  # > 2x is a listing error, ignored as before
 
 
 def test_live_rule_no_longer_keeps_old_industrybuying_prices():
@@ -465,7 +483,7 @@ def test_brand_mrp_replaces_request_a_quote_but_never_a_marketplace_price():
     d = {it["row"].sku: it["decision"] for it in rr.items}
     assert d["Q-1"].action == "publish" and d["Q-1"].price == D(1499)  # MRP, no 1% off
     assert "brand_mrp:https://shop.brand.example/p" in d["Q-1"].info
-    assert d["P-1"].price == D(990)  # marketplace wins
+    assert d["P-1"].price == D(968)  # marketplace wins (less 3.24%)
     assert rr.stats["rows_brand_mrp"] == 1
     old = {"Q-1": _bp(1499, days_ago=31)}
     rr = go(c, [no_site], {"version": 1, "items": {}}, FakeFetcher({}), FakeWoo(), publish=False, brand_prices=old)

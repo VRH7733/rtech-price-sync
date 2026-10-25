@@ -43,7 +43,7 @@ def test_cli_dry_run_end_to_end(tmp_path, monkeypatch, capsys):
                         "--today", "2026-10-14"])
     assert code == 0
     # live config: cheapest of Moglix/HomeRun (Rs 1,000) less 1% (owner, 18 Oct 2026)
-    assert (data / "dryrun_plan.csv").read_text().splitlines()[1].startswith("PC-1,publish,990")
+    assert (data / "dryrun_plan.csv").read_text().splitlines()[1].startswith("PC-1,publish,968")
     assert not (data / "latest.json").exists()  # dry run must not touch state
     assert "DRY RUN" in capsys.readouterr().out
 

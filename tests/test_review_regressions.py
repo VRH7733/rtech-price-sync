@@ -210,7 +210,7 @@ def test_state_is_saved_even_if_report_writing_fails(tmp_path, monkeypatch):
     code = runmod.main(["--config", str(ROOT / "config.yaml"), "--catalogue", str(cat), "--data", str(data),
                         "--publish", "--today", "2026-10-14"])
     assert code == 0
-    assert json.loads((data / "latest.json").read_text())["items"]["S1"]["price"] == "990"  # live -1%
+    assert json.loads((data / "latest.json").read_text())["items"]["S1"]["price"] == "968"  # live -3.24%
 
 
 def test_rotate_history_survives_empty_old_file(tmp_path):
