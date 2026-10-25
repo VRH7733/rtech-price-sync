@@ -39,6 +39,11 @@ jobs:
             grep -q 'google-site-verification' /tmp/body 2>/dev/null && marks="$marks google-verification"
             grep -q 'rtech-brands-bar' /tmp/body 2>/dev/null && marks="$marks brands-line"
             grep -q 'All other major\|all other major' /tmp/body 2>/dev/null && marks="$marks all-brands-text"
+            grep -q 'hasOfferCatalog' /tmp/body 2>/dev/null && marks="$marks offer-catalog"
+            grep -q 'msvalidate.01' /tmp/body 2>/dev/null && marks="$marks bing-verification"
+            grep -q 'custom-panel-boards-cable-trays' /tmp/body 2>/dev/null && marks="$marks panels-link"
+            sameas=$(grep -o '"sameAs":\[[^]]*\]' /tmp/body 2>/dev/null | head -1 | cut -c1-300)
+            [ -n "$sameas" ] && marks="$marks sameAs=$sameas"
             emails=$(grep -oE '[A-Za-z0-9._%+-]+@(ramtechautomation\.[a-z.]+|gmail\.com)' /tmp/body 2>/dev/null | sort -u | tr '\n' ' ')
             found=""
             IFS=',' read -ra words <<< "$FIND"
