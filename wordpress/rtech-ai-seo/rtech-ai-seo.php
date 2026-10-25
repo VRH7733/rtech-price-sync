@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.7
+ * Version:           1.0.8
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.7' );
+define( 'RTECH_AI_VERSION', '1.0.8' );
+define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
 function rtech_ai_settings() {
@@ -37,7 +38,8 @@ function rtech_ai_settings() {
 		// one is saved in Rank Math (the live ones were generic: "Browse ... product families")
 		'term_seo'   => 'yes',
 		// the shop's pages elsewhere (Google Business Profile, Facebook, IndiaMART ...), one link per line
-		'profiles'   => 'https://ramtechautomation.co.in/', // the company's own site (same business, same address)
+		// the company's own site and its Google Business Profile (Harshi, 25 Oct 2026): same business
+		'profiles'   => "https://ramtechautomation.co.in/\n" . RTECH_AI_GBP_LINK,
 		// "authorised dealer" is said only for these (Harshi, 16 Oct 2026); the others are "supplied on request"
 		'dealer_brands' => 'Havells, Legrand, Polycab, KEI, RR Kabel, Finolex',
 		'other_brands'  => 'Schneider Electric, Siemens, ABB, L&T, Anchor by Panasonic, Crompton, Bajaj, Philips, Wipro, Orient Electric, V-Guard, Syska, Hager',
@@ -913,6 +915,12 @@ add_action(
 		rtech_ai_add_draft_page( 'brands-we-supply', 'Brands We Supply', rtech_ai_brands_page_html() );
 		rtech_ai_add_draft_page( 'delivery-and-pickup', 'Delivery and Pickup', rtech_ai_delivery_page_html() );
 		rtech_ai_one_returns_page();
+		// settings saved before the profile link existed: add it to them too
+		$saved = get_option( 'rtech_ai_settings' );
+		if ( is_array( $saved ) && ! empty( $saved['profiles'] ) && false === strpos( $saved['profiles'], RTECH_AI_GBP_LINK ) ) {
+			$saved['profiles'] = rtrim( $saved['profiles'] ) . "\n" . RTECH_AI_GBP_LINK;
+			update_option( 'rtech_ai_settings', $saved );
+		}
 		rtech_ai_add_draft_page( 'custom-panel-boards-cable-trays', 'Custom Panel Boards and Cable Trays in Bengaluru', rtech_ai_services_page_html() );
 		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache's own "Purge All"; nothing happens without it
 	},

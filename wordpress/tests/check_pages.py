@@ -140,7 +140,7 @@ check(t.startswith("Havells Dealer in Bengaluru") and "Wires" in t, "brand page:
 check(d.startswith("Buy Havells in Bengaluru") and "Wires & Cables" in d, f"brand page: description ({d})")
 
 if org:
-    check(org[0].get("sameAs") == ["https://www.facebook.com/rtech-test", "https://g.page/rtech-test"],
+    check(org[0].get("sameAs") == ["https://www.facebook.com/rtech-test", "https://g.page/rtech-test", "https://share.google/cDnzcwB3UO6bpJeWk"],
           f"home: sameAs lists the shop's other pages, drops non-links ({org[0].get('sameAs')})")
 
 s, _, smap = get("/sitemap_index.xml")
