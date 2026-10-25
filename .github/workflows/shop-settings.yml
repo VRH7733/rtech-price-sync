@@ -1,0 +1,37 @@
+name: shop-settings
+
+# Manual, read-only: how the shop's checkout handles delivery (shipping zones, their areas and
+# methods with costs) and which payment methods are on, through the WooCommerce REST API.
+# Results are annotations on the run. Nothing is changed on the shop.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read delivery and payment settings
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+        run: |
+          api() { curl -sS --max-time 30 -A "rtech-price-sync shop-settings (owner's own shop)" -u "$WC_KEY:$WC_SECRET" "${WC_URL%/}/wp-json/wc/v3/$1" || echo '[]'; }
+          gen=$(api settings/general)
+          for id in woocommerce_ship_to_countries woocommerce_calc_shipping woocommerce_specific_ship_to_countries woocommerce_currency; do
+            echo "::notice title=general::$id = $(echo "$gen" | jq -c --arg id "$id" '.[] | select(.id==$id) | .value' 2>/dev/null)"
+          done
+          ship=$(api settings/shipping)
+          echo "::notice title=shipping options::$(echo "$ship" | jq -c '[.[] | {id, value}]' 2>/dev/null | head -c 900)"
+          zones=$(api shipping/zones)
+          echo "::notice title=zones::$(echo "$zones" | jq -c '[.[] | {id, name}]' 2>/dev/null)"
+          for z in $(echo "$zones" | jq -r '.[].id' 2>/dev/null); do
+            loc=$(api "shipping/zones/$z/locations" | jq -c '[.[] | "\(.type):\(.code)"]' 2>/dev/null | head -c 400)
+            m=$(api "shipping/zones/$z/methods" | jq -c '[.[] | {title, method_id, enabled, cost: (.settings.cost.value // null), min_amount: (.settings.min_amount.value // null)}]' 2>/dev/null | head -c 700)
+            echo "::notice title=zone $z::areas $loc methods $m"
+          done
+          echo "::notice title=payments::$(api payment_gateways | jq -c '[.[] | select(.enabled) | .title]' 2>/dev/null)"
