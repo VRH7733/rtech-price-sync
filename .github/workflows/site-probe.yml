@@ -33,7 +33,7 @@ jobs:
           ua="rtech-price-sync/0.1 (+mailto:$CONTACT_EMAIL)"
           [ -n "$URLS" ] || URLS="$base/ $base/llms.txt $base/brands-we-supply/ $base/brand/havells/ $base/shop/"
           for u in $URLS; do
-            out=$(curl -sS -L -m 20 -A "$ua" -o /tmp/body -w '%{http_code} %{time_total}s %{url_effective}' "$u" 2>&1)
+            out=$(curl -sS -L -m 20 -A "$ua" -o /tmp/body -w '%{http_code} %{time_total}s %{url_effective}' "$u" 2>&1 || true)
             title=$(grep -o -m1 '<title>[^<]*' /tmp/body 2>/dev/null | cut -c8-120)
             marks=""
             grep -q 'google-site-verification' /tmp/body 2>/dev/null && marks="$marks google-verification"
