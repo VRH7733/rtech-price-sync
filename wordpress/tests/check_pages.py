@@ -233,6 +233,7 @@ print("     checkout:", out[:400])
 order = json.loads(out) if out.startswith("{") else {}
 check(st == 200 and order.get("status") == "processing", f"checkout: order request placed ({st} {order.get('status')})")
 redirect = (order.get("payment_result") or {}).get("redirect_url", "")
+check(bool(redirect), f"checkout: thank-you page address returned ({redirect})")
 if redirect:
     req = urllib.request.Request(redirect)
     with opener.open(req, timeout=60) as r:
