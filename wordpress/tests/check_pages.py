@@ -278,6 +278,20 @@ st, _, body = raw("/xmlrpc.php", "POST", xml, "text/xml")
 print("     xmlrpc:", st, body[:200])
 check("wp.getUsersBlogs" not in body and "pingback.ping" not in body, "security: XML-RPC methods off")
 
+# 1.1.2: a search that finds nothing offers a price request
+st, _, body = get("/?s=zzqqxx&post_type=product")
+check(body.count('class="rtech-not-found"') == 1 and "Can&#039;t find it?" in body.replace("Can't", "Can&#039;t"), "search, no results: one price-request box")
+m = re.search(r'href="(https://wa\.me/[^"]+)"', body.split('rtech-not-found', 1)[-1])
+check(m is not None and "zzqqxx" in m.group(1), f"search, no results: WhatsApp message names the search ({m.group(1)[:120] if m else None})")
+check("<strong>zzqqxx</strong>" in body, "search, no results: the search shown, escaped")
+st, _, body = get("/?s=%3Cscript%3Ealert(1)%3C%2Fscript%3E&post_type=product")
+check("<script>alert(1)</script>" not in body, "search: the search text is escaped")
+st, _, body = get("/?s=Havells&post_type=product")
+check("rtech-not-found-line" in body, "search with results: one line offering a price request")
+st, _, body = get("/?s=zzqqxx")
+check(body.count("rtech-not-found") >= 1, "site-wide search, no results: price-request box")
+check("we source them through distributors" in llms, "llms.txt: products not listed can be requested")
+
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
 mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]

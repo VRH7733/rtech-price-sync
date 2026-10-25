@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, consistent policy pages and basic security hardening. Changes no prices, stock or product content.
- * Version:           1.1.1
+ * Version:           1.1.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.1.1' );
+define( 'RTECH_AI_VERSION', '1.1.2' );
 define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
@@ -664,6 +664,7 @@ function rtech_ai_llms_txt() {
 		$facts[] = '- Also builds to order: custom electrical panel boards and cable trays (' . get_permalink( rtech_ai_services_page() ) . ')';
 	}
 	$facts[] = '- Products without a price show "Request a Quote": send the product and quantity and we reply with a price.';
+	$facts[] = '- Products not listed on the website, including rare or discontinued items and other brands: we source them through distributors. Send the brand, the model number or a description, and the quantity to ' . $s['phone'] . ' (phone or WhatsApp), ' . $s['email'] . ' or ' . rtech_ai_price_request_url() . ', and we reply with a price.';
 	$lines   = array_merge( $lines, $facts, array( '' ) );
 
 	if ( function_exists( 'wc_get_page_permalink' ) ) {
@@ -1286,6 +1287,73 @@ function rtech_ai_refresh_policy_pages() {
 	}
 }
 
+/* ---------- Can't find it? Request a price (search pages) ---------- */
+
+/** The page for a single price request: Request a Quote first, then the BOQ upload, then contact. */
+function rtech_ai_price_request_url() {
+	foreach ( array( 'request-a-quote', 'upload-boq', 'contact', 'contact-us' ) as $slug ) {
+		$p = get_page_by_path( $slug );
+		if ( $p && 'publish' === $p->post_status ) {
+			return get_permalink( $p );
+		}
+	}
+	return home_url( '/' );
+}
+
+/**
+ * Harshi (25 Oct 2026): a customer who does not find a product should still ask us for its price.
+ * A search with no results gets a box with a price-request link and a WhatsApp message that already
+ * names what they searched for; a search with results gets one line under them.
+ */
+function rtech_ai_not_found_html( $term, $compact = false ) {
+	$s    = rtech_ai_settings();
+	$term = trim( wp_strip_all_tags( (string) $term ) );
+	$wa   = rtech_ai_whatsapp_number();
+	$msg  = 'Price request' . ( '' !== $term ? ': ' . $term : '' ) . "\nQuantity: ";
+	$req  = add_query_arg( 'product', rawurlencode( $term ), rtech_ai_price_request_url() );
+	$btns = '<a class="button" href="' . esc_url( '' !== $term ? $req : rtech_ai_price_request_url() ) . '">Request a price</a>';
+	if ( $wa ) {
+		$btns .= ' <a class="button" href="' . esc_url( 'https://wa.me/' . $wa . '?text=' . rawurlencode( $msg ) ) . '" target="_blank" rel="noopener">Ask on WhatsApp</a>';
+	}
+	if ( $compact ) {
+		return '<p class="rtech-not-found rtech-not-found-line" style="margin:1.5em 0">Not the one you need? We supply all major electrical brands, also products not listed here. ' . $btns . '</p>';
+	}
+	$h  = '<div class="rtech-not-found" style="margin:1.5em 0;padding:1.2em;border:1px solid #d0d7de;border-radius:6px">';
+	$h .= '<h2 style="margin-top:0">Can\'t find it? We can still get it.</h2>';
+	$h .= '<p>We supply all major electrical brands in ' . esc_html( $s['city'] ) . ', also products that are not on this website. Send us the product name or model number' . ( '' !== $term ? ' (you searched for <strong>' . esc_html( $term ) . '</strong>)' : '' ) . ' and the quantity, and we reply with a price.</p>';
+	$h .= '<p>' . $btns . ' or call <a href="tel:' . esc_attr( preg_replace( '/[^\d+]/', '', $s['phone'] ) ) . '">' . esc_html( $s['phone'] ) . '</a>.</p></div>';
+	return $h;
+}
+
+add_action(
+	'woocommerce_no_products_found',
+	function () {
+		echo rtech_ai_not_found_html( get_search_query() ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside
+	},
+	20
+);
+
+add_action(
+	'woocommerce_after_shop_loop',
+	function () {
+		if ( is_search() ) {
+			echo rtech_ai_not_found_html( get_search_query(), true ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside
+		}
+	},
+	20
+);
+
+/** Any search page the WooCommerce hooks above did not reach (site-wide search, block themes): add it before </main>. */
+function rtech_ai_add_not_found_box( $html ) {
+	global $wp_query;
+	if ( ! is_search() || ! $wp_query || false !== strpos( $html, 'rtech-not-found' ) ) {
+		return $html;
+	}
+	$box = rtech_ai_not_found_html( get_search_query(), $wp_query->found_posts > 0 );
+	$pos = stripos( $html, '</main>' );
+	return false !== $pos ? substr_replace( $html, $box . '</main>', $pos, 7 ) : $html;
+}
+
 /* ---------- Security hardening (setting "hardening") ---------- */
 
 /**
@@ -1386,7 +1454,7 @@ function rtech_ai_fix_emails( $html ) {
 	if ( 'yes' === $s['hide_gmail'] ) {
 		$html = preg_replace( '/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?:gmail|googlemail)\.com\b/i', $want, $html );
 	}
-	return rtech_ai_fix_grievance( $html );
+	return rtech_ai_add_not_found_box( rtech_ai_fix_grievance( $html ) );
 }
 
 add_action(
