@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       RTech AI & Search Helper
- * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, and /llms.txt. Changes no prices, stock or product content.
- * Version:           1.0.8
+ * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt and a Google Merchant Center product feed. Changes no prices, stock or product content.
+ * Version:           1.0.9
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.0.8' );
+define( 'RTECH_AI_VERSION', '1.0.9' );
+define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
 /** Site-wide facts. Edit under Settings > RTech AI. */
@@ -718,6 +719,159 @@ foreach ( array( 'created_product_cat', 'edited_product_cat', 'delete_product_ca
 	add_action( $hook, function () { delete_transient( 'rtech_ai_llms_txt' ); } );
 }
 
+/* ---------- Google Merchant Center product feed: /google-merchant-feed.xml ---------- */
+
+/**
+ * Every published product with a price and its own photo, built fresh on each request, so the
+ * daily scheduled fetch in Merchant Center always gets today's prices (Harshi, 25 Oct 2026: it
+ * must update by itself). Request a Quote products and products without a photo are left out:
+ * Google rejects them anyway.
+ */
+function rtech_ai_feed_text( $text, $max = 5000 ) {
+	$text = preg_replace( '/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}]/u', '', rtech_ai_plain( $text ) );
+	return htmlspecialchars( mb_substr( $text, 0, $max ), ENT_XML1 | ENT_QUOTES, 'UTF-8' );
+}
+
+/** "Wires & Cables > House Wires" for the product's first real category. */
+function rtech_ai_product_type( $product ) {
+	$terms = get_the_terms( $product->get_id(), 'product_cat' );
+	if ( ! $terms || is_wp_error( $terms ) ) {
+		return '';
+	}
+	foreach ( $terms as $t ) {
+		if ( 'uncategorized' === $t->slug ) {
+			continue;
+		}
+		$names = array();
+		foreach ( array_reverse( get_ancestors( $t->term_id, 'product_cat', 'taxonomy' ) ) as $a ) {
+			$names[] = rtech_ai_plain( get_term( $a, 'product_cat' )->name );
+		}
+		$names[] = rtech_ai_plain( $t->name );
+		return implode( ' > ', $names );
+	}
+	return '';
+}
+
+function rtech_ai_feed_price( $amount ) {
+	return number_format( (float) $amount, 2, '.', '' ) . ' ' . get_woocommerce_currency();
+}
+
+/** One <item>, or '' when Google could not list the product. */
+function rtech_ai_feed_item( $product ) {
+	if ( ! $product || $product->is_type( 'variable' ) || ! $product->is_visible() || $product->get_post_password() || ! rtech_ai_has_price( $product ) ) {
+		return '';
+	}
+	$image = wp_get_attachment_url( $product->get_image_id() );
+	if ( ! $image ) {
+		return '';
+	}
+	$f = array(
+		'g:id'    => $product->get_sku() ? $product->get_sku() : (string) $product->get_id(),
+		'g:title' => rtech_ai_feed_text( $product->get_name(), 150 ),
+	);
+	$desc = rtech_ai_plain( $product->get_description() );
+	if ( '' === $desc ) {
+		$desc = rtech_ai_plain( $product->get_short_description() );
+	}
+	$f['g:description'] = rtech_ai_feed_text( '' !== $desc ? $desc : rtech_ai_product_description( $product ) );
+	$f['g:link']        = esc_url_raw( get_permalink( $product->get_id() ) );
+	$f['g:image_link']  = esc_url_raw( $image );
+	$extra = array_slice( array_filter( array_map( 'wp_get_attachment_url', $product->get_gallery_image_ids() ) ), 0, 10 );
+	// the shop shows "Check Availability" unless stock is tracked and above zero: only "instock" is in stock
+	$f['g:availability'] = 'instock' === $product->get_stock_status() ? 'in_stock' : 'out_of_stock';
+	$regular = (string) $product->get_regular_price();
+	if ( $product->is_on_sale() && '' !== $regular && (float) $regular > (float) $product->get_price() ) {
+		$f['g:price']      = rtech_ai_feed_price( $regular );
+		$f['g:sale_price'] = rtech_ai_feed_price( $product->get_price() );
+	} else {
+		$f['g:price'] = rtech_ai_feed_price( $product->get_price() );
+	}
+	$f['g:condition'] = 'new';
+	$brand = rtech_ai_brand( $product );
+	if ( $brand ) {
+		$f['g:brand'] = rtech_ai_feed_text( $brand, 70 );
+	}
+	$type = rtech_ai_product_type( $product );
+	if ( $type ) {
+		$f['g:product_type'] = rtech_ai_feed_text( $type, 750 );
+	}
+	$xml = "<item>\n";
+	foreach ( $f as $tag => $value ) {
+		$xml .= "\t<$tag>" . ( 'g:link' === $tag || 'g:image_link' === $tag ? htmlspecialchars( $value, ENT_XML1, 'UTF-8' ) : $value ) . "</$tag>\n";
+	}
+	foreach ( $extra as $url ) {
+		$xml .= "\t<g:additional_image_link>" . htmlspecialchars( esc_url_raw( $url ), ENT_XML1, 'UTF-8' ) . "</g:additional_image_link>\n";
+	}
+	return $xml . "</item>\n";
+}
+
+function rtech_ai_print_feed() {
+	$s = rtech_ai_settings();
+	echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+	echo '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>' . "\n";
+	echo '<title>' . rtech_ai_feed_text( $s['brand_name'] ) . '</title>' . "\n";
+	echo '<link>' . htmlspecialchars( home_url( '/' ), ENT_XML1, 'UTF-8' ) . '</link>' . "\n";
+	echo '<description>' . rtech_ai_feed_text( $s['brand_name'] . ', ' . $s['city'] . ': products with a price' ) . '</description>' . "\n";
+	$ids = get_posts(
+		array(
+			'post_type'      => 'product',
+			'post_status'    => 'publish',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'orderby'        => 'ID',
+			'order'          => 'ASC',
+			'no_found_rows'  => true,
+			'meta_query'     => array( // phpcs:ignore WordPress.DB.SlowDBQuery -- once a day
+				array( 'key' => '_price', 'value' => 0, 'compare' => '>', 'type' => 'DECIMAL(12,2)' ),
+				array( 'key' => '_thumbnail_id', 'compare' => 'EXISTS' ),
+			),
+		)
+	);
+	$listed = 0;
+	$in_stock = 0;
+	foreach ( array_chunk( $ids, 100 ) as $chunk ) {
+		_prime_post_caches( $chunk, true, true );
+		foreach ( $chunk as $id ) {
+			$item = rtech_ai_feed_item( wc_get_product( $id ) );
+			if ( '' !== $item ) {
+				echo $item; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped per field
+				$listed++;
+				$in_stock += false !== strpos( $item, '<g:availability>in_stock<' ) ? 1 : 0;
+			}
+		}
+		if ( function_exists( 'wp_cache_flush_runtime' ) ) {
+			wp_cache_flush_runtime();
+		}
+	}
+	echo "</channel></rss>\n<!-- $listed products listed, $in_stock in stock, " . count( $ids ) . ' with a price and a photo checked, ' . gmdate( 'Y-m-d H:i' ) . " UTC -->\n";
+}
+
+add_action(
+	'parse_request',
+	function () {
+		$path = wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$home = rtrim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
+		if ( $path !== $home . RTECH_AI_FEED_PATH || ! function_exists( 'wc_get_product' ) ) {
+			return;
+		}
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 300 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		}
+		status_header( 200 );
+		header( 'Content-Type: application/xml; charset=utf-8' );
+		header( 'X-Robots-Tag: noindex' );
+		// always today's prices: no page cache, no CDN cache
+		header( 'Cache-Control: no-store, max-age=0' );
+		header( 'X-LiteSpeed-Cache-Control: no-cache' );
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+		rtech_ai_print_feed();
+		exit;
+	},
+	0
+);
+
 /* ---------- "Brands we supply" line on every page ---------- */
 
 /** Page to send "can't find it?" visitors to: the BOQ upload page, else the contact page. */
@@ -1052,6 +1206,7 @@ function rtech_ai_settings_page() {
 	);
 	echo '<div class="wrap"><h1>RTech AI &amp; Search Helper</h1>';
 	echo '<p>Check the AI guide here: <a href="' . esc_url( home_url( '/llms.txt' ) ) . '" target="_blank">' . esc_html( home_url( '/llms.txt' ) ) . '</a>. After saving, purge LiteSpeed Cache.</p>';
+	echo '<p>Google Merchant Center product feed (products with a price and a photo, always current): <a href="' . esc_url( home_url( RTECH_AI_FEED_PATH ) ) . '" target="_blank">' . esc_html( home_url( RTECH_AI_FEED_PATH ) ) . '</a></p>';
 	echo '<form method="post" action="options.php">';
 	settings_fields( 'rtech_ai' );
 	echo '<table class="form-table">';

@@ -164,6 +164,31 @@ check("custom electrical panel boards and cable trays" in llms, "llms.txt: made-
 check("- Authorised dealer for: Havells, Legrand" in llms and "all other major electrical brands" in llms,
       "llms.txt: dealer brands and other brands")
 
+import xml.etree.ElementTree as ET
+s, ctype, feed = get("/google-merchant-feed.xml")
+print(feed[:2500])
+check(s == 200 and "xml" in ctype, f"feed: 200 XML ({s} {ctype})")
+G = "{http://base.google.com/ns/1.0}"
+try:
+    items = ET.fromstring(feed.encode("utf-8")).findall("./channel/item")
+except ET.ParseError as e:
+    items = []
+    check(False, f"feed: valid XML ({e})")
+ids = [i.findtext(G + "id") for i in items]
+check(ids == ["RT-HAVE-0900"], f"feed: only the priced product with a photo, not hidden, not Request a Quote ({ids})")
+if items:
+    it = items[0]
+    def g(tag):
+        return it.findtext(G + tag)
+    check(g("title") == "Havells Life Line Plus S3 HRFR 1.5 Sq.mm Wire 90 m & Red", f"feed: title with & ({g('title')})")
+    check(g("price") == "1999.00 INR" and g("sale_price") == "1899.00 INR", f"feed: price and sale price ({g('price')} / {g('sale_price')})")
+    check(g("availability") == "in_stock" and g("condition") == "new" and g("brand") == "Havells", "feed: availability, condition, brand")
+    check(g("link") == BASE + "/product/feed-wire/", f"feed: link ({g('link')})")
+    check((g("image_link") or "").endswith("feed-wire.png") and (it.findtext(G + "additional_image_link") or "").endswith("feed-wire-2.png"), "feed: photos")
+    check(g("product_type") == "Wires & Cables > House Wires", f"feed: product type ({g('product_type')})")
+    check("90 m coil" in (g("description") or ""), "feed: description")
+check("1 products listed, 1 in stock" in feed, "feed: count comment")
+
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
 mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]
