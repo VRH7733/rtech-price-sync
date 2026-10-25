@@ -5,6 +5,7 @@
 update_option( 'blogname', 'rtechelectricals' );
 update_option( 'woocommerce_store_city', 'Bengaluru' );
 update_option( 'woocommerce_store_postcode', '560065' );
+update_option( 'woocommerce_currency', 'INR' ); // as on the live shop
 
 $cat = wp_insert_term( 'Wires &amp; Cables', 'product_cat', array( 'slug' => 'wires-cables' ) );
 $cat_id = is_wp_error( $cat ) ? $cat->get_error_data() : $cat['term_id'];
