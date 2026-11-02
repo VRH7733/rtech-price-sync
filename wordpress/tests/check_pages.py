@@ -292,6 +292,25 @@ st, _, body = get("/?s=zzqqxx")
 check(body.count("rtech-not-found") >= 1, "site-wide search, no results: price-request box")
 check("we source them through distributors" in llms, "llms.txt: products not listed can be requested")
 
+# 1.1.3: old delivery promises show the current terms; support hours; Permissions-Policy
+st, _, body = get("/old-promises/")
+check("24–48" not in body and "within 24 hours" not in body and "24 Hour" not in body,
+      "old promises: no 24-48 hour delivery or 24-hour reporting left")
+check(body.count("Pickup, or transport booked for you") == 1 and "Wrong or faulty item: report within 7 days" in body
+      and "Pickup or Transport Booked for You" in body and "7-Day Issue Reporting" in body
+      and "Transport is paid by the customer." in body and "within 7 days of collection, with photos." in body,
+      "old promises: each line shows the current terms")
+if org:
+    cp = org[0].get("contactPoint", {})
+    hrs = cp.get("hoursAvailable", {})
+    check(cp.get("contactType") == "customer service" and hrs.get("opens") == "07:00" and hrs.get("closes") == "23:00"
+          and len(hrs.get("dayOfWeek", [])) == 7, f"home: support hours in the business data ({cp})")
+check("Phone and WhatsApp support: 7:00 AM to 11:00 PM, every day." in llms, "llms.txt: support hours")
+check("within 7 days of collection" in llms and "GST invoice" in llms, "llms.txt: returns window and GST invoice")
+st, h, _ = raw("/")
+check("camera=()" in h.get("permissions-policy", "") and "payment" not in h.get("permissions-policy", ""),
+      f"security: Permissions-Policy sent, payment left alone ({h.get('permissions-policy')})")
+
 log = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
 # only lines from the plugin's own file (wp-cli's own deprecation traces name the command "activate rtech-ai-seo")
 mine = [l for l in log.splitlines() if "plugins/rtech-ai-seo/" in l]

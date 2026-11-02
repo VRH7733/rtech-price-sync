@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, consistent policy pages and basic security hardening. Changes no prices, stock or product content.
- * Version:           1.1.2
+ * Version:           1.1.3
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.1.2' );
+define( 'RTECH_AI_VERSION', '1.1.3' );
 define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
@@ -69,6 +69,11 @@ function rtech_ai_settings() {
 		// "yes": less for attackers to work with (25 Oct 2026 outside check): login user names not
 		// listed, XML-RPC off (kept on when Jetpack is active), security headers, no version numbers
 		'hardening'      => 'yes',
+		// "yes": older theme text that promises "Bengaluru delivery: 24-48 hours" and "reporting within
+		// 24 hours" (7 Sep 2026, footer and home page) shows the delivery and returns terms instead
+		'fix_claims'     => 'yes',
+		// customer support hours, as the site's own pages state them (7:00 AM-11:00 PM, every day)
+		'support_hours'  => '07:00-23:00',
 	);
 	$saved = get_option( 'rtech_ai_settings', array() );
 	return wp_parse_args( is_array( $saved ) ? array_filter( $saved, 'strlen' ) : array(), $defaults );
@@ -466,6 +471,22 @@ add_filter(
 			if ( $s['email'] ) {
 				$data['publisher']['email'] = $s['email'];
 			}
+			$hours = rtech_ai_support_hours();
+			if ( $hours && $s['phone'] ) {
+				$data['publisher']['contactPoint'] = array(
+					'@type'             => 'ContactPoint',
+					'contactType'       => 'customer service',
+					'telephone'         => preg_replace( '/[^\d+]/', '', $s['phone'] ),
+					'email'             => $s['email'],
+					'areaServed'        => 'IN',
+					'hoursAvailable'    => array(
+						'@type'     => 'OpeningHoursSpecification',
+						'dayOfWeek' => array( 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' ),
+						'opens'     => $hours[0],
+						'closes'    => $hours[1],
+					),
+				);
+			}
 			if ( rtech_ai_services_page() ) {
 				$url  = get_permalink( rtech_ai_services_page() );
 				$area = array( '@type' => 'City', 'name' => $s['city'] );
@@ -614,6 +635,20 @@ add_action(
 	5
 );
 
+/** Support hours setting "07:00-23:00" -> array( '07:00', '23:00' ), or none if the setting is not a time range. */
+function rtech_ai_support_hours() {
+	if ( preg_match( '/^\s*([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)\s*$/', (string) rtech_ai_settings()['support_hours'], $m ) ) {
+		return array( $m[1] . ':' . $m[2], $m[3] . ':' . $m[4] );
+	}
+	return array();
+}
+
+/** "23:00" -> "11:00 PM" */
+function rtech_ai_clock( $hhmm ) {
+	list( $h, $m ) = array_map( 'intval', explode( ':', $hhmm ) );
+	return ( 0 === $h % 12 ? 12 : $h % 12 ) . ':' . sprintf( '%02d', $m ) . ( $h < 12 ? ' AM' : ' PM' );
+}
+
 /* ---------- /llms.txt ---------- */
 
 function rtech_ai_llms_txt() {
@@ -662,6 +697,12 @@ function rtech_ai_llms_txt() {
 	$facts[] = '- Delivery: collect from the office, send your own transport (courier, Porter, own vehicle), or we book Porter or a courier for you; transport charges are paid by the customer, and we load at no charge.';
 	if ( rtech_ai_services_page() ) {
 		$facts[] = '- Also builds to order: custom electrical panel boards and cable trays (' . get_permalink( rtech_ai_services_page() ) . ')';
+	}
+	$facts[] = '- Wrong or faulty item: tell us within 7 days of collection, with the invoice number and photos; we replace it and arrange the transport for that first replacement; if the replacement also has a problem, collect another one from the office or get a refund within 7 business days. Cut cable lengths, used items and change of mind are not taken back.';
+	$facts[] = '- Every order comes with a GST invoice. Products carry the brand\'s own warranty, and we help with warranty claims.';
+	$hours = rtech_ai_support_hours();
+	if ( $hours ) {
+		$facts[] = '- Phone and WhatsApp support: ' . rtech_ai_clock( $hours[0] ) . ' to ' . rtech_ai_clock( $hours[1] ) . ', every day.';
 	}
 	$facts[] = '- Products without a price show "Request a Quote": send the product and quantity and we reply with a price.';
 	$facts[] = '- Products not listed on the website, including rare or discontinued items and other brands: we source them through distributors. Send the brand, the model number or a description, and the quantity to ' . $s['phone'] . ' (phone or WhatsApp), ' . $s['email'] . ' or ' . rtech_ai_price_request_url() . ', and we reply with a price.';
@@ -1259,6 +1300,28 @@ add_filter(
 	20
 );
 
+/**
+ * The theme's footer and home page (7 Sep 2026) still promise "Bengaluru delivery: 24-48 hours" and
+ * "reporting within 24 hours". Since 24 Oct 2026 the terms are: collect, own transport, or we book
+ * transport at the customer's cost, and a wrong or faulty item is reported within 7 days. A promise
+ * the shop does not keep is a misleading claim under India's consumer rules: show the terms instead.
+ */
+function rtech_ai_fix_claims( $html ) {
+	if ( 'yes' !== rtech_ai_settings()['fix_claims'] || ( false === stripos( $html, '24' ) ) ) {
+		return $html;
+	}
+	$dash = '(?:–|-|&#8211;|&ndash;)';
+	$map  = array(
+		'/Bengaluru delivery:\s*24\s*' . $dash . '\s*48 hours/i'                                      => 'Pickup, or transport booked for you',
+		'/Damaged or mismatched order reporting:\s*within 24 hours/i'                                    => 'Wrong or faulty item: report within 7 days',
+		'/24\s*' . $dash . '\s*48 Hour Bengaluru Delivery/i'                                             => 'Pickup or Transport Booked for You',
+		'/Fast local delivery for eligible electrical products across Bengaluru\./i'                      => 'Collect from our Yelahanka office, send your own transport, or we book Porter or a courier for you. Transport is paid by the customer.',
+		'/24 Hour Issue Reporting/i'                                                                     => '7-Day Issue Reporting',
+		'/Report damaged or mismatched orders within 24 hours of delivery\./i'                            => 'Report a wrong or faulty item within 7 days of collection, with photos.',
+	);
+	return preg_replace( array_keys( $map ), array_values( $map ), $html );
+}
+
 /** Pages from before named another grievance officer: every page shows the same one. */
 function rtech_ai_fix_grievance( $html ) {
 	$s    = rtech_ai_settings();
@@ -1375,6 +1438,8 @@ add_action(
 		header( 'X-Content-Type-Options: nosniff' );
 		header( 'X-Frame-Options: SAMEORIGIN' );
 		header( 'Referrer-Policy: strict-origin-when-cross-origin' );
+		// the shop uses none of these; payment is left alone for a future payment method
+		header( 'Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=()' );
 		if ( 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
 			header( 'Strict-Transport-Security: max-age=15552000' ); // 180 days, this host only
 		}
@@ -1443,7 +1508,12 @@ add_action(
 function rtech_ai_fix_emails( $html ) {
 	$s    = rtech_ai_settings();
 	$want = sanitize_email( $s['email'] );
-	if ( ! $want || ! is_string( $html ) || '' === $html ) {
+	if ( ! is_string( $html ) || '' === $html ) {
+		return $html;
+	}
+	$html = rtech_ai_fix_claims( $html );
+	// the customer's own email shows on the cart, checkout and account pages: leave every address there
+	if ( ! $want || ! empty( $GLOBALS['rtech_ai_keep_emails'] ) ) {
 		return $html;
 	}
 	foreach ( rtech_ai_list( $s['old_emails'] ) as $old ) {
@@ -1464,9 +1534,7 @@ add_action(
 			return;
 		}
 		// the customer's own email shows on these pages: leave every address as it is
-		if ( function_exists( 'is_checkout' ) && ( is_checkout() || is_cart() || is_account_page() ) ) {
-			return;
-		}
+		$GLOBALS['rtech_ai_keep_emails'] = function_exists( 'is_checkout' ) && ( is_checkout() || is_cart() || is_account_page() );
 		ob_start( 'rtech_ai_fix_emails' );
 	},
 	0
@@ -1534,6 +1602,7 @@ add_action(
 					$out['hide_gmail'] = empty( $in['hide_gmail'] ) ? 'no' : 'yes';
 					$out['order_request'] = empty( $in['order_request'] ) ? 'no' : 'yes';
 					$out['hardening'] = empty( $in['hardening'] ) ? 'no' : 'yes';
+					$out['fix_claims'] = empty( $in['fix_claims'] ) ? 'no' : 'yes';
 					return $out;
 				},
 			)
@@ -1568,6 +1637,8 @@ function rtech_ai_settings_page() {
 		'whatsapp'      => 'WhatsApp number for order requests',
 		'grievance_old' => 'Old grievance officer name on older pages, shown as the name above',
 		'hardening'     => 'Security: hide login user names, switch off XML-RPC (unless Jetpack is active), send security headers, hide version numbers',
+		'fix_claims'    => 'Older footer and home page text ("Bengaluru delivery: 24-48 hours", "reporting within 24 hours") shows the current delivery and returns terms',
+		'support_hours' => 'Phone and WhatsApp support hours, 24-hour clock (for example 07:00-23:00)',
 		'delivery_pages' => 'Older delivery pages (slugs, comma separated) that show the current delivery terms instead',
 		'term_seo'   => 'Category and brand pages: use this plugin\'s "... in Bengaluru" titles and descriptions, also where Rank Math has one saved',
 	);
@@ -1579,7 +1650,7 @@ function rtech_ai_settings_page() {
 	echo '<table class="form-table">';
 	foreach ( $fields as $k => $label ) {
 		echo '<tr><th><label for="rtech_ai_' . esc_attr( $k ) . '">' . esc_html( $label ) . '</label></th><td>';
-		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail', 'order_request', 'hardening' ), true ) ) {
+		if ( in_array( $k, array( 'term_seo', 'brand_bar', 'hide_gmail', 'order_request', 'hardening', 'fix_claims' ), true ) ) {
 			echo '<input type="checkbox" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']" value="yes"' . checked( 'yes', $s[ $k ], false ) . '>';
 		} elseif ( in_array( $k, array( 'about', 'home_desc', 'shop_desc', 'profiles' ), true ) ) {
 			echo '<textarea class="large-text" rows="4" id="rtech_ai_' . esc_attr( $k ) . '" name="rtech_ai_settings[' . esc_attr( $k ) . ']">' . esc_textarea( $s[ $k ] ) . '</textarea>';

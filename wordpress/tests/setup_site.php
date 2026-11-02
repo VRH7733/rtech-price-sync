@@ -105,4 +105,9 @@ update_option( 'rank-math-options-sitemap', $sm );
 $c = wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Contact Us', 'post_name' => 'contact-us', 'post_status' => 'publish',
 	// as on the live site: the old .com address and a personal Gmail address (made up here)
 	'post_content' => '<p>Email <a href="mailto:info@ramtechautomation.com">info@ramtechautomation.com</a> or Owner.Test99@gmail.com</p>' ) );
+// as on the live site's footer and home page (7 Sep 2026): promises the shop no longer makes
+wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Old Promises', 'post_name' => 'old-promises', 'post_status' => 'publish',
+	'post_content' => '<p>Bengaluru delivery: 24–48 hours</p><p>Damaged or mismatched order reporting: within 24 hours</p>'
+		. '<h3>24–48 Hour Bengaluru Delivery</h3><p>Fast local delivery for eligible electrical products across Bengaluru.</p>'
+		. '<h3>24 Hour Issue Reporting</h3><p>Report damaged or mismatched orders within 24 hours of delivery.</p>' ) );
 echo "priced=$id quote=$qid\n";
