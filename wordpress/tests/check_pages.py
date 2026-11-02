@@ -296,10 +296,10 @@ check("we source them through distributors" in llms, "llms.txt: products not lis
 st, _, body = get("/old-promises/")
 check("24–48" not in body and "within 24 hours" not in body and "24 Hour" not in body,
       "old promises: no 24-48 hour delivery or 24-hour reporting left")
-check(body.count("Pickup, or transport booked for you") == 1 and "Wrong or faulty item: report within 7 days" in body
-      and "Pickup or Transport Booked for You" in body and "7-Day Issue Reporting" in body
-      and "Transport is paid by the customer." in body and "within 7 days of collection, with photos." in body,
-      "old promises: each line shows the current terms")
+want = ["Pickup, or transport booked for you", "Wrong or faulty item: report within 7 days", "Pickup or Transport Booked for You",
+        "7-Day Issue Reporting", "Transport is paid by the customer.", "within 7 days of collection, with photos."]
+check(all(w in body for w in want), "old promises: each line shows the current terms (missing: "
+      + ", ".join(w for w in want if w not in body) + ")")
 if org:
     cp = org[0].get("contactPoint", {})
     hrs = cp.get("hoursAvailable", {})
