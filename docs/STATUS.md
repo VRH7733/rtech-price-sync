@@ -51,9 +51,11 @@
 - Enquiry form: works, but both test enquiries (12:45, 12:57 IST) landed in Gmail SPAM. Cause
   (message headers): PHP mail() goes out through Hostinger/MailChannels with envelope sender
   srv1496.main-hosting.eu, no DKIM, so DMARC fails and p=quarantine sends it to spam. `-f` is
-  ignored by the relay (tested, reverted). Fix options for the owner: send through an
-  authenticated mailbox on the domain (SMTP, password set by the owner in config.php), or a Gmail
-  filter "never send to spam" for no-reply@ramtechautomation.co.in.
+  ignored by the relay (tested, reverted). Owner chose the Gmail filter (10 Nov): in the recipient
+  Gmail, from:(no-reply@ramtechautomation.co.in) -> Never send it to Spam. Verified: test 3 (13:22
+  IST) arrived in the Inbox. The mail itself still fails DMARC, so any OTHER inbox (if the
+  recipient in config.php changes) would still file it as spam; the lasting fix is authenticated
+  SMTP from a mailbox on the domain.
 - Product photos (owner, 10 Nov): manufacturers allow their images but will not send packs. Agreed
   safe route: extend brand-images to the brands' official sources (sites, catalogues/PDFs, official
   marketplace stores) and use the brand's range photo for every size of a wire range (the KEI/RR
