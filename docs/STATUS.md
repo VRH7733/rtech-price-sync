@@ -26,9 +26,18 @@
   Owner said "optimize all the things" (10 Nov). Applied and verified live: LiteSpeed browser cache
   on (static files now `max-age=31557600`, was 7 days); header logo 2172x724 PNG (95 KB served)
   -> 720x240 WebP (media 8923, 26.5 KB, shown 180x60, header unchanged); links in the brands bar
-  and in product text underlined (Additional CSS). NOT applied: LiteSpeed async CSS / critical CSS
-  / JS defer (~0.9 s render-blocking; can break the cart or consent box, needs a quiet-hour test)
-  and the home-page heading-order fix (page content edit).
+  and in product text underlined (Additional CSS).
+  Later on 10 Nov (owner: "do all the needful, don't ask"): LiteSpeed CSS minify, JS minify and
+  JS deferred on (guests only; jQuery, jQuery Migrate, gtm/analytics excluded from defer). Tested:
+  guest home, product and cart load with no script errors, jQuery + WooCommerce cart scripts
+  present, Add to cart button present. PageSpeed product page mobile 98 afterwards. Home page:
+  the four feature boxes were H4 straight after the H1; now H2 with the same 22px size (page 62,
+  previous version kept as a revision). Still NOT possible: async CSS with critical CSS (~1 s
+  render-blocking) needs a QUIC.cloud account linked to the site (owner's account, not created).
+  Plugins also updated: Hostinger Tools 3.0.81, LiteSpeed 7.9.3, Rank Math 1.0.281, Wordfence
+  9.1.0, WP 2FA 4.3.0, WPVibe 1.21.7; all pages 200 afterwards. Brands We Supply, Custom Panel
+  Boards and Cable Trays, Delivery and Pickup were already published (24-25 Oct); two older drafts
+  from September (electrical-catalogue, electrical-products-bengaluru) left as drafts.
 - Share image: `rtechelectricals-share-1200x630.jpg` (media 8920) made from the real logo file
   (no AI), set as Rank Math > Titles & Meta > OpenGraph Thumbnail. rtech-ai-seo 1.1.4 (before it
   the plugin's fallback added the logo ahead of Rank Math's default) passed wp-plugin-test run
