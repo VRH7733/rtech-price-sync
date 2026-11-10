@@ -110,4 +110,11 @@ wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Old Promises', 'p
 	'post_content' => '<p>Bengaluru delivery: 24–48 hours</p><p>Damaged or mismatched order reporting: within 24 hours</p>'
 		. '<h3>24–48 Hour Bengaluru Delivery</h3><p>Fast local delivery for eligible electrical products across Bengaluru.</p>'
 		. '<h3>24 Hour Issue Reporting</h3><p>Report damaged or mismatched orders within 24 hours of delivery.</p>' ) );
+// 1.1.4: Rank Math's default share image (OpenGraph Thumbnail) is used for pages without a photo
+$share = rtech_test_image( 'share-default.png' );
+$t = get_option( 'rank-math-options-titles', array() );
+$t = is_array( $t ) ? $t : array();
+$t['open_graph_image_id'] = $share;
+$t['open_graph_image']    = wp_get_attachment_url( $share );
+update_option( 'rank-math-options-titles', $t );
 echo "priced=$id quote=$qid\n";

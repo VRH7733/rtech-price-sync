@@ -78,6 +78,13 @@ for slug, priced in (("priced-cable", True), ("quote-switch", False)):
     check(desc is not None and "HavellsSize" not in desc and len(desc) <= 160, f"{slug}: meta description clean, <=160")
     check(meta(page, "og:description") == desc, f"{slug}: og:description matches")
 
+# 1.1.4: a product without a photo shares Rank Math's default image, not the logo;
+# a product with a photo keeps its own photo
+for slug, want in (("no-photo-mcb", "share-default"), ("feed-wire", "feed-wire")):
+    og = meta(get(f"/product/{slug}/")[2], "og:image") or ""
+    print(f"     {slug} og:image:", og)
+    check(want in og, f"{slug}: og:image is the {want} image")
+
 s, _, home = get("/")
 check(s == 200, "home: HTTP 200")
 print("     home description:", meta(home, "description"))
