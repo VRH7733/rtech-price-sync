@@ -1,0 +1,28 @@
+name: keepalive
+
+# GitHub switches off scheduled workflows in a public repo after 60 days with no activity in the
+# repo. The nightly price data is committed to the private data repo, so this repo can go quiet and
+# daily-prices would stop with no warning. Twice a month this re-enables the scheduled workflows
+# through the API (no commit, no change to the shop), which counts as activity.
+on:
+  schedule:
+    - cron: "23 6 1,15 * *"   # 1st and 15th, 11:53 IST
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-enable the scheduled workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          for wf in daily-prices.yml brand-prices.yml keepalive.yml; do
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/enable"
+            echo "enabled: $wf"
+          done

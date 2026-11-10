@@ -1,4 +1,26 @@
-# STATUS (updated 15 Oct 2026, LIVE)
+# STATUS (updated 10 Nov 2026, LIVE)
+
+## 10 Nov 2026: where things stand (from the data repo; the shop itself was not reachable from
+## the cloud session that wrote this, so nothing below was re-checked on the live site)
+
+- Price rule since 25 Oct: cheapest of Moglix/HomeRun less 3.24%; sites more than 5% apart show no
+  price. IndustryBuying refuses the bot (HTTP 403 since 16 Oct); its kept prices were dropped 23 Oct.
+- Run of 10 Nov (data/summary.md): 5,738 catalogue rows, 285 prices set, 7 changed, 969 flagged,
+  0 publish failures, 31.6 min. data/latest.json: 4,737 of 5,603 products show no price (Request a
+  Quote), 866 show a price. Shop check of 23 Oct: 756 priced, 4,643 Request a Quote.
+- Open flags (data repo issue #44): 873 IndustryBuying-seller-only, 65 parse_failed,
+  21 dropped_source, 8 variant_unconfirmed, 7 spread over 5%. Fixed by the owner via manual_price.
+- Reports are old: seo/audit.md and data/shop_check.md 23 Oct (before plugin 1.0.4-1.1.3),
+  security/scan.md 2 Nov 11:25 UTC (before 1.1.3 at 11:34 UTC). seo/speed.md has no numbers:
+  Hostinger answers GitHub runners with 403, so Lighthouse must run from the owner's browser.
+- Not known: whether rtech-ai-seo 1.1.3 is installed on the shop, and whether the draft pages
+  (Brands We Supply, Custom Panel Boards and Cable Trays, Delivery and Pickup) were published.
+- Owner actions open: Blocksy and Blocksy Companion 2.1.60 -> 2.1.61; /readme.html is public
+  (delete it in File Manager); no Search Console verification or analytics tag was seen on any page
+  (23 Oct) although rte-ga4-launch-assist is installed; ~4,285 products without a photo (their
+  share image is the site logo, by design of the fallback).
+- keepalive.yml (added 10 Nov) re-enables the scheduled workflows twice a month, so GitHub's
+  60-day inactivity rule cannot switch daily-prices off. It works only once it is on main.
 
 ## LIVE since 15 Oct 2026 (owner's approvals typed in the project thread)
 
