@@ -2,7 +2,8 @@ name: brand-images
 
 # Manual. Official product images from the brands' own websites (tools/brand_images.py):
 # robots.txt and published sitemaps only, >= 6 s per host, honest User-Agent, first refusal stops
-# that brand. Certain model-number matches only; images must pass the quality check.
+# that brand. Certain model-number matches only; images must pass the quality check. Wires: the brand's
+# own range photo (tools/brand_ranges.py: hand-checked range -> brand page), padded to a square.
 # apply=false only writes the plan and report to the private data repo (brand-images/).
 on:
   workflow_dispatch:
@@ -26,6 +27,14 @@ on:
         default: false
       allow_range:
         description: "wires with no own photo get the brand's photo of their range, padded to a square"
+        type: boolean
+        default: false
+      allow_family:
+        description: "wires whose title names no range get the brand's one photo of that kind of cable (weaker)"
+        type: boolean
+        default: false
+      ranges_only:
+        description: "crawl only the brands' wire range pages (tools/brand_ranges.py), not their sitemaps"
         type: boolean
         default: false
 
@@ -97,6 +106,8 @@ jobs:
           name: targets
       - name: Crawl ${{ matrix.brand }}
         if: steps.on.outputs.go == '1'
+        env:
+          RANGES_ONLY: ${{ github.event.inputs.ranges_only == 'true' && '--ranges-only' || '' }}
         run: |
           mkdir -p out
           python tools/brand_images.py crawl --brand ${{ matrix.brand }} --targets targets.csv \
@@ -152,7 +163,7 @@ jobs:
           python tools/brand_images.py plan --targets pd/brand-images/targets.csv --pages-dir pd/brand-images \
             --out pd/brand-images/plan.csv --check-current
       - name: Range photos padded to a square (published as release assets)
-        if: github.event.inputs.apply == 'true' && github.event.inputs.allow_range == 'true'
+        if: github.event.inputs.apply == 'true' && (github.event.inputs.allow_range == 'true' || github.event.inputs.allow_family == 'true')
         run: |
           python tools/brand_images.py pad --plan pd/brand-images/plan.csv --out-dir padded \
             --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/brand-range-images"
@@ -178,9 +189,11 @@ jobs:
           WC_SECRET: ${{ secrets.WC_SECRET }}
           ALLOW_NAME: ${{ github.event.inputs.allow_name }}
           ALLOW_RANGE: ${{ github.event.inputs.allow_range }}
+          ALLOW_FAMILY: ${{ github.event.inputs.allow_family }}
         run: |
           EXTRA=""; if [ "$ALLOW_NAME" = "true" ]; then EXTRA="--allow-name"; fi
           if [ "$ALLOW_RANGE" = "true" ]; then EXTRA="$EXTRA --allow-range"; fi
+          if [ "$ALLOW_FAMILY" = "true" ]; then EXTRA="$EXTRA --allow-family"; fi
           python tools/brand_images.py apply --plan pd/brand-images/plan.csv --limit ${{ github.event.inputs.limit }} $EXTRA
       - name: Report
         if: always()

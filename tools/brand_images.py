@@ -20,6 +20,14 @@ Steps (each a sub-command; the GitHub workflow brand-images.yml runs them in ord
            record the source per product (meta _rte_image_source/_rte_image_url/_rte_image_brand).
   remove   Take one brand's images off again (only images this tool put on), e.g. if it objects.
 
+Wires and cables (10 Nov 2026, owner: manufacturer-owned images only, the brand's range photo for every
+size and colour of a range): tools/brand_ranges.py maps our titles to the brand's own range pages
+(hand-checked). `crawl` opens those pages every run (--ranges-only: nothing else) and keeps the range
+photo(s) in ranges_<brand>.csv; `plan` gives a wire without a photo the range photo in its own colour
+when the brand shows one, else the range's main photo (add-range), or for a title that names no range
+the brand's one photo of that kind of cable (add-family, applied only with --allow-family). Both are
+padded to a white square (pad). Never photos from other sellers or marketplaces, never AI images.
+
 Quality rule (owner: "clarity and clear, not messy crop"): shorter side >= 600 px, not a banner or
 collage shape (long/short <= 1.6), plain border (product not cut off, no busy scene), product fills
 a sensible part of the picture. Watermarks cannot be detected reliably; images from the brand's own
@@ -243,6 +251,12 @@ def range_key(text: str, brand: str) -> str:
     return r if len(r) >= 4 else ""
 
 
+def title_colour(title: str) -> str:
+    """The last wire colour named in a title ('' when none)."""
+    cs = [w for w in re.findall(r"[a-z]+", title.lower()) if w in WIRE_COLOURS]
+    return cs[-1] if cs else ""
+
+
 def is_wire(title: str) -> bool:
     return bool(re.search(r"(\d)\s*(sq\.?\s*mm|sqmm|mm2|mm\u00b2)|\b(wire|wires|cable)\b", title.lower()))
 
@@ -378,6 +392,71 @@ def extract_page(html: str, url: str) -> dict:
             clean.append(u)
     name = (names + og + [""])[0]
     return {"strong": " | ".join(s for s in strong if s)[:1500], "images": clean[:4], "name": name[:300]}
+
+
+# a class or id word of a page part that is not the product (menus, headers, offers ...)
+LAYOUT = re.compile(r"(^|[-_])(menu|submenu|nav|navbar|navigation|header|footer|breadcrumbs?|social|offers?|promo|"
+                    r"store-switcher|newsletter|cookie|why|testimonials?|clients?)([-_]|$)", re.I)
+
+
+def _layout_part(tag) -> bool:
+    if tag.name in ("nav", "header", "footer", "template", "noscript"):
+        return True
+    if tag.name in ("body", "html", "main", "[document]"):
+        return False
+    return any(LAYOUT.search(w) for w in (tag.get("class") or []) + [tag.get("id") or ""])
+SRC_ATTRS = ("data-lazy-src", "data-src", "data-original", "src")
+
+
+def _brand_domain(host: str) -> str:
+    host = host.lower().split(":")[0]
+    parts = host.split(".")
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "net", "org") and len(parts[-1]) == 2:
+        return ".".join(parts[-3:])  # kei-ind.co.in style
+    return ".".join(parts[-2:])
+
+
+def range_page_images(html: str, url: str, image_rx: str = "", words=()) -> list:
+    """Candidate range photos on one of the brand's own range pages, best first: the page's own
+    structured image (JSON-LD Product image, og:image) and the images in its content (not menus,
+    headers, footers, offers), lazy-loaded ones included. With `image_rx` only photos whose file
+    name or alt text match it are kept (pages that also show other products); otherwise content
+    images must name one of `words` (the range name) in their file name or alt text. Only images on
+    the brand's own domain. Each: {"url", "alt", "colour"} (colour = a wire colour named by the file
+    name or alt text, '' when none)."""
+    from bs4 import BeautifulSoup
+    from requests.utils import requote_uri
+    soup = BeautifulSoup(html, "html.parser")
+    home = _brand_domain(urlsplit(url).netloc)
+    cands = [(u, "", True) for u in extract_page(html, url)["images"]]
+    for img in soup.find_all("img"):
+        if any(_layout_part(p) for p in img.parents):
+            continue
+        src = next((img.get(a) for a in SRC_ATTRS if img.get(a) and not img.get(a).startswith("data:")), "")
+        if not src and img.get("srcset"):
+            src = img["srcset"].split(",")[-1].strip().split(" ")[0]
+        if src:
+            cands.append((src, img.get("alt") or "", False))
+    words = [w for w in (re.sub(r"[^a-z0-9]", "", w.lower()) for w in words) if len(w) >= 4]
+    out, seen = [], set()
+    for src, alt, structured in cands:
+        u = requote_uri(original_image(urljoin(url, src.strip())))  # Finolex file names have spaces
+        parts = urlsplit(u)
+        if (not u.startswith("http") or u in seen or BAD_IMAGE_URL.search(parts.path)
+                or _brand_domain(parts.netloc) != home):
+            continue
+        fname = parts.path.rsplit("/", 1)[-1]
+        label = (fname + " " + alt).lower().replace("_", " ").replace("%20", " ")
+        flat = re.sub(r"[^a-z0-9]", "", label)
+        if image_rx:
+            if not re.search(image_rx, label) and not re.search(image_rx, label.replace(" ", "-")):
+                continue
+        elif not structured and not any(w in flat for w in words):
+            continue
+        seen.add(u)
+        colours = [w for w in re.findall(r"[a-z]+", label) if w in WIRE_COLOURS]
+        out.append({"url": u, "alt": alt[:120], "colour": colours[0] if len(set(colours)) == 1 else ""})
+    return out[:8]
 
 
 # ---------------------------------------------------------------- image quality
@@ -537,13 +616,22 @@ class Refused(Exception):
     pass
 
 
+def _visible_text(html: str) -> str:
+    """Title and body text without scripts, styles and tag attributes."""
+    s = re.sub(r"(?is)<(script|style|noscript)\b.*?</\1\s*>", " ", html)
+    s = re.sub(r"(?s)<[^>]*>", " ", s)
+    return re.sub(r"\s+", " ", s)
+
+
 def _check(fr, what):
     from rtech_sync.fetcher import looks_blocked
     is_image = fr.content[:3] == b"\xff\xd8\xff" or fr.content[:4] in (b"\x89PNG", b"RIFF")
-    # a challenge page is small; a full product page may just mention reCAPTCHA on a contact form
+    # a challenge page is small; a full product page may just mention reCAPTCHA on a contact form.
+    # Only the words a visitor sees count: a script tag such as /js/recaptcha.js on a real page
+    # (Polycab's campaign page, 10 Nov 2026) is not a challenge.
     text = fr.text or ""
     challenge = (fr.status == "ok" and not is_image and len(text) < 20000 and "<h1" not in text.lower()
-                 and looks_blocked(text))
+                 and looks_blocked(_visible_text(text)))
     if fr.status == "blocked" or challenge:
         raise Refused(f"{what}: {fr.status} {fr.http or ''} {fr.detail}".strip())
     if fr.status == "robots_blocked" and "unavailable" in fr.detail:
@@ -581,7 +669,8 @@ def original_image(url: str) -> str:
     url = re.sub(r"/cache/[0-9a-f]{32}/", "/", url)
     parts = urlsplit(url)
     if parts.query and all(k.split("=")[0].lower() in ("format", "width", "height", "w", "h", "quality", "mode",
-                                                      "rmode", "rnd", "v") for k in parts.query.split("&")):
+                                                      "rmode", "rnd", "v", "bg-color", "fit", "canvas")
+                           for k in parts.query.split("&")):
         url = url.split("?")[0]
     return url
 
@@ -725,6 +814,81 @@ def _save_pages(path, rows):
         w.writerows(rows.values())
 
 
+RANGE_FIELDS = ["range", "kind", "url", "status", "images", "fetched"]
+
+
+def ranges_path(pages_out) -> Path:
+    p = Path(pages_out)
+    return p.with_name(p.name.replace("pages_", "ranges_", 1) if p.name.startswith("pages_") else "ranges_" + p.name)
+
+
+def range_targets(targets, key) -> dict:
+    """Range entry key -> our products WITHOUT a photo that match it (wires without a model number)."""
+    from brand_ranges import range_for
+    out = collections.defaultdict(list)
+    for t in brand_targets(targets, key):
+        if t.get("image_src") or codes_for(t["name"]) or not is_wire(t["name"]):
+            continue
+        r, _ = range_for(key, t["name"])
+        if r:
+            out[r.key].append(t)
+    return out
+
+
+def _fetch_images(fetcher, cands, page_url, max_images=4) -> list:
+    """Download and check candidate photos (both checks: normal and padded range photo). A refusal
+    by the brand's own host stops the brand (Refused); an image server elsewhere only skips the image."""
+    from rtech_sync.urlcheck import bare_host
+    checked = []
+    for c in cands[:max_images]:
+        ir = fetcher.get(c["url"])
+        try:
+            _check(ir, c["url"])
+        except Refused:
+            if bare_host(urlsplit(c["url"]).netloc) == bare_host(urlsplit(page_url).netloc):
+                raise
+            ir.status = "error"
+        q = _assess_both(ir.content) if ir.status == "ok" else {
+            "ok": False, "w": 0, "h": 0, "reason": f"{ir.status} {ir.http or ''}".strip(), "white": False,
+            "range_ok": False, "range_reason": ""}
+        checked.append(dict(q, **c))
+    return checked
+
+
+def crawl_ranges(fetcher, key, targets, log) -> tuple:
+    """Fetch the brand's own range pages (brand_ranges.RANGES) that one of our products without a
+    photo needs, pick the range photo(s) on each and check them. Returns (rows, summary)."""
+    from brand_ranges import RANGES
+    need = range_targets(targets, key)
+    rows, s = [], {"ranges": len(RANGES.get(key, [])), "ranges_needed": len(need), "pages": 0, "with_photo": 0,
+                   "products": sum(len(v) for v in need.values()), "stopped": ""}
+    done = {}
+    try:
+        for r in RANGES.get(key, []):
+            if r.key not in need:
+                continue
+            for page in r.pages:
+                if (page, r.image) not in done:
+                    fr = fetcher.get(page)
+                    _check(fr, page)
+                    s["pages"] += 1
+                    imgs = []
+                    if fr.status == "ok":
+                        cands = range_page_images(fr.text, fr.final_url or page, r.image, r.name.split())
+                        imgs = _fetch_images(fetcher, cands, page)
+                    done[(page, r.image)] = (f"{fr.status}:{fr.http or ''}", imgs)
+                status, imgs = done[(page, r.image)]
+                s["with_photo"] += any(i.get("range_ok") for i in imgs)
+                rows.append({"range": r.key, "kind": r.kind, "url": page, "status": status,
+                             "images": json.dumps(imgs), "fetched": time.strftime("%Y-%m-%d")})
+                log(f"  range {r.key}: {page} {status}, photos {sum(1 for i in imgs if i.get('range_ok'))}"
+                    f"/{len(imgs)} pass, {len(need[r.key])} of our products")
+    except Refused as e:
+        s["stopped"] = f"STOPPED for this run: {e}"
+        log(f"STOP ranges {key}: {e}")
+    return rows, s
+
+
 def cmd_crawl(a):
     from rtech_sync.config import load_config
     from rtech_sync.urlcheck import bare_host
@@ -748,7 +912,7 @@ def cmd_crawl(a):
         print(m, flush=True)
 
     pim = BRANDS[key].get("pim")
-    if pim:
+    if pim and not getattr(a, "ranges_only", False):
         s = summary["sites"][pim] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0, "matched": 0,
                                      "images_checked": 0, "stopped": ""}
         try:
@@ -776,6 +940,24 @@ def cmd_crawl(a):
         except Refused as e:
             s["stopped"] = f"STOPPED for this run: {e}"
             log(f"STOP {pim}: {e}")
+    # the brand's own range pages (few, opened every run so a new range photo is seen)
+    rrows, summary["ranges"] = crawl_ranges(fetcher, key, targets, log)
+    with open(ranges_path(a.out), "w", newline="") as fh:
+        w = csv.DictWriter(fh, RANGE_FIELDS)
+        w.writeheader()
+        w.writerows(rrows)
+    if summary["ranges"]["stopped"] or getattr(a, "ranges_only", False):
+        # a refusal on the range pages stops the whole brand for this run
+        if summary["ranges"]["stopped"]:
+            for site_entry in BRANDS[key]["sites"]:
+                summary["sites"][site_cfg(site_entry)[0]] = {"sitemap_files": 0, "pages_listed": 0, "fetched": 0,
+                                                             "matched": 0, "images_checked": 0,
+                                                             "stopped": summary["ranges"]["stopped"]}
+        _save_pages(a.out, out_rows)
+        summary["requests_per_host"] = fetcher.request_log
+        Path(a.summary).write_text(json.dumps(summary, indent=1))
+        log(json.dumps(summary, indent=1))
+        return 0
     wanted = Wanted(targets, all_codes)
     # cached images that failed only a rule that has since changed (600 -> 400 px, range photos):
     # check the image again without opening the page again
@@ -924,11 +1106,47 @@ def cmd_crawl(a):
 
 
 # ---------------------------------------------------------------- plan
-def plan(targets, pages_by_brand, current_quality=None) -> list:
+def _area(im) -> int:
+    return int(im.get("w") or 0) * int(im.get("h") or 0)
+
+
+def choose_range_photo(rng, colour, range_rows, wire_pages) -> tuple:
+    """The brand's photo for one of our products in range `rng` (brand_ranges.Range).
+    Order: a photo of the range in our colour (file name, alt text or the brand's per-size page says
+    the colour); else the first photo that passes on the range's own page (its main photo); else the
+    largest passing photo of the brand's per-size pages of the range. Returns
+    (page_url, image, note) or (None, None, why)."""
+    pool = []  # (source order, page_url, image, colour)
+    for i, row in enumerate(r for r in range_rows if r["range"] == rng.key):
+        for j, im in enumerate(json.loads(row.get("images") or "[]")):
+            pool.append(((0, i, j), row["url"], im, im.get("colour", "")))
+    for pk, p in wire_pages:
+        if pk["range"] in rng.site_ranges:
+            for im in json.loads(p.get("images") or "[]"):
+                pool.append(((1, -_area(im), 0), p["url"], im, pk["colour"]))
+    if not pool:
+        return None, None, "no photo of this range found on the brand's site yet"
+    good = [x for x in pool if x[2].get("range_ok")]
+    if not good:
+        return None, None, "brand range photo failed quality check"
+    same = [x for x in good if colour and x[3] == colour]
+    if same:
+        x = min(same, key=lambda x: x[0])
+        return x[1], x[2], f"the brand's photo of this range in {colour}"
+    x = min(good, key=lambda x: x[0])
+    shown = f" (the photo shows {x[3]})" if x[3] and colour and x[3] != colour else ""
+    return x[1], x[2], "the brand's range photo" + shown
+
+
+def plan(targets, pages_by_brand, current_quality=None, ranges_by_brand=None) -> list:
     """One row per target product: the chosen official image or why there is none."""
+    from brand_ranges import range_for
     current_quality = current_quality or {}
+    ranges_by_brand = ranges_by_brand or {}
     rows = []
-    for key, pages in pages_by_brand.items():
+    for key in list(pages_by_brand) + [k for k in ranges_by_brand if k not in pages_by_brand]:
+        pages = pages_by_brand.get(key, [])
+        range_rows = ranges_by_brand.get(key, [])
         ts = brand_targets(targets, key)
         code_skus = collections.defaultdict(set)
         for t in ts:
@@ -1015,6 +1233,19 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                     best, how = (p, im, f"wire {wk['range']} {wk['size']:g} sq mm {wk['colour']}".strip()), "wire"
                 elif why == "no model number in our title":
                     why = "no model number in our title; no brand page for this wire range, size and colour"
+            range_note = ""
+            if not best and not codes and is_wire(t["name"]):  # the brand's range page (brand_ranges.py)
+                rng, amb = range_for(key, t["name"])
+                if amb:
+                    why += "; " + amb
+                elif rng:
+                    colour = wk["colour"] if wk else title_colour(t["name"])
+                    pu, im, note = choose_range_photo(rng, colour, range_rows, wire_pages)
+                    if im:
+                        best = ({"url": pu}, im, f"{rng.kind} {rng.key}")
+                        how, range_note = ("family" if rng.kind == "family" else "range"), note
+                    else:
+                        why += f"; range {rng.name}: {note}"
             rk = range_key(t["name"], t["brand"]) if not codes and is_wire(t["name"]) else ""
             if not best and rk and rk in range_pages:  # last resort: the range's own photo, padded
                 ims = [im for p in range_pages[rk] for im in json.loads(p.get("images") or "[]")
@@ -1047,10 +1278,12 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
                 if best:
                     p, im, c = best
                     row.update(code=c, page_url=p["url"], image_url=im["url"], w=im["w"], h=im["h"])
-                    if how == "range":
+                    if how in ("range", "family"):
                         if not t["image_src"]:
-                            row["action"] = "add-range"
-                            row["reason"] = "no image now; the brand's photo of this range, padded to a square"
+                            row["action"] = "add-range" if how == "range" else "add-family"
+                            row["reason"] = ("no image now; " + (range_note or "the brand's photo of this range")
+                                             + (" (one brand page for this kind of cable)" if how == "family" else "")
+                                             + ", padded to a square")
                         else:
                             row["reason"] = "has an image; range photos never replace an image"
                     elif how == "name":
@@ -1089,6 +1322,7 @@ def plan(targets, pages_by_brand, current_quality=None) -> list:
     return rows
 
 
+PADDED = ("add-range", "add-family")  # shown padded to a white square (cmd_pad)
 PLAN_FIELDS = ["sku", "id", "brand", "name", "code", "page_url", "image_url", "w", "h", "action", "reason", "result"]
 
 
@@ -1099,6 +1333,11 @@ def cmd_plan(a, woo=None):
         f = Path(a.pages_dir) / f"pages_{key}.csv"
         if f.exists():
             pages_by_brand[key] = list(csv.DictReader(open(f, newline="")))
+    ranges_by_brand = {}
+    for key in BRANDS:
+        f = Path(a.pages_dir) / f"ranges_{key}.csv"
+        if f.exists():
+            ranges_by_brand[key] = list(csv.DictReader(open(f, newline="")))
     cur = {}
     if a.check_current:
         import requests
@@ -1112,7 +1351,7 @@ def cmd_plan(a, woo=None):
                 except Exception as e:
                     cur[t["sku"]] = {"ok": False, "w": 0, "h": 0, "reason": type(e).__name__}
                 time.sleep(1)
-    rows = plan(targets, pages_by_brand, cur)
+    rows = plan(targets, pages_by_brand, cur, ranges_by_brand)
     with open(a.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, PLAN_FIELDS)
         w.writeheader()
@@ -1128,7 +1367,7 @@ def cmd_pad(a):
     import hashlib
     from rtech_sync.config import load_config
     rows = list(csv.DictReader(open(a.plan, newline="")))
-    todo = [r for r in rows if r["action"] == "add-range"]
+    todo = [r for r in rows if r["action"] in PADDED]
     if not todo:
         print("pad: no range photos in the plan")
         return 0
@@ -1162,7 +1401,7 @@ def cmd_pad(a):
         w = csv.DictWriter(fh, PLAN_FIELDS)
         w.writeheader()
         w.writerows(rows)
-    print(f"pad: {len(done)} range photos padded for {sum(1 for r in todo if r['action'] == 'add-range')} products")
+    print(f"pad: {len(done)} range photos padded for {sum(1 for r in todo if r['action'] in PADDED)} products")
     return 0
 
 
@@ -1187,10 +1426,11 @@ def _night_ist(now=None) -> bool:
 def cmd_apply(a, woo, sleep=time.sleep):
     rows = list(csv.DictReader(open(a.plan, newline="")))
     allowed = ("add", "replace") + (("add-name",) if a.allow_name else ()) + (
-        ("add-range",) if getattr(a, "allow_range", False) else ())
+        ("add-range",) if getattr(a, "allow_range", False) else ()) + (
+        ("add-family",) if getattr(a, "allow_family", False) else ())
     # a range photo must already point at our padded copy (see cmd_pad)
     todo = [r for r in rows if r["action"] in allowed
-            and (r["action"] != "add-range" or "/releases/download/" in r["image_url"])]
+            and (r["action"] not in PADDED or "/releases/download/" in r["image_url"])]
     if a.limit:
         todo = todo[:a.limit]
     ids = [int(r["id"]) for r in todo]
@@ -1233,7 +1473,7 @@ def cmd_apply(a, woo, sleep=time.sleep):
         if not cur:
             r["result"] = "not on shop"
             continue
-        if (r["action"] in ("add", "add-range") or (r["action"] == "add-name" and not r["sku"].upper().startswith("WEB-"))) \
+        if (r["action"] in ("add",) + PADDED or (r["action"] == "add-name" and not r["sku"].upper().startswith("WEB-"))) \
                 and cur.get("images"):
             r["result"] = "skipped: has an image now"
             continue
@@ -1287,6 +1527,11 @@ def cmd_report(a):
     lines = ["# Official brand images", "", f"Run {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}", ""]
     for f in sorted(Path(a.pages_dir).glob("summary_*.json")):
         s = json.loads(f.read_text())
+        rs = s.get("ranges")
+        if rs and rs.get("ranges_needed"):
+            lines.append(f"- {s['brand']} range pages: {rs['ranges_needed']} of {rs['ranges']} ranges needed for "
+                         f"{rs['products']} products, pages fetched {rs['pages']}, with a passing photo "
+                         f"{rs['with_photo']}. {rs['stopped']}")
         for site, v in s["sites"].items():
             lines.append(f"- {s['brand']} {site}: sitemap files {v['sitemap_files']}, pages listed "
                          f"{v['pages_listed']}, fetched {v['fetched']}, with our model numbers {v['matched']}, "
@@ -1314,6 +1559,7 @@ def cmd_report(a):
                   f"({', '.join(f'{b} {n}' for b, n in waiting.most_common())})"]
         for r in [r for r in rows if r["action"] == "add-name"][:8]:
             lines.append(f"- {r['name']} <- {r['page_url']} ({r['code']})")
+    lines += planned_tables(rows)
     reasons = collections.Counter(r["reason"].split(":")[0] for r in rows if r["action"] == "none")
     lines += ["", "## Why products have no official image", ""]
     lines += [f"- {k}: {v}" for k, v in reasons.most_common()]
@@ -1323,6 +1569,41 @@ def cmd_report(a):
     Path(a.out).write_text("\n".join(lines) + "\n")
     print("\n".join(lines[:40]))
     return 0
+
+
+ROUTES = [("add", "model number / exact wire page"), ("replace", "replace a WEB- image"),
+          ("add-range", "range photo"), ("add-family", "one brand photo for a kind of cable"),
+          ("add-name", "product name")]
+
+
+def planned_tables(rows) -> list:
+    """What the plan would put on (rows not applied yet), per brand and route, and per range."""
+    todo = [r for r in rows if r["action"] != "none" and not r.get("result")]
+    if not todo:
+        return ["", "## Planned, not applied yet", "", "Nothing."]
+    by = collections.defaultdict(collections.Counter)
+    for r in todo:
+        by[r["brand"]][r["action"]] += 1
+    out = ["", "## Planned, not applied yet (what each route would add)", "",
+           "| Brand | " + " | ".join(f"{label} (`{act}`)" for act, label in ROUTES) + " | Total |",
+           "|---|" + "---|" * (len(ROUTES) + 1)]
+    tot = collections.Counter()
+    for b in sorted(by):
+        tot.update(by[b])
+        out.append(f"| {b} | " + " | ".join(str(by[b][act]) for act, _ in ROUTES) + f" | {sum(by[b].values())} |")
+    out.append("| **All** | " + " | ".join(str(tot[act]) for act, _ in ROUTES) + f" | {sum(tot.values())} |")
+    rng = collections.defaultdict(collections.Counter)
+    for r in todo:
+        if r["action"] in PADDED:
+            rng[r["code"]]["products"] += 1
+            rng[r["code"]]["in our colour"] += "range in " in r["reason"]
+            rng[r["code"]][r["image_url"].split("(")[0]] += 0
+    if rng:
+        out += ["", "| Range (brand page) | Products | Photo in the product's own colour | Photos used |", "|---|---|---|---|"]
+        for code, c in sorted(rng.items(), key=lambda x: -x[1]["products"]):
+            photos = len([k for k in c if k.startswith("http")])
+            out.append(f"| {code} | {c['products']} | {c['in our colour']} | {photos} |")
+    return out
 
 
 def _woo():
@@ -1342,6 +1623,7 @@ def main(argv=None):
     s.add_argument("--out", required=True)
     s.add_argument("--summary", required=True)
     s.add_argument("--max-pages", type=int, default=600)
+    s.add_argument("--ranges-only", action="store_true", help="only the brand's range pages (brand_ranges.py)")
     s.add_argument("--config", default="config.yaml")
     s = sub.add_parser("plan")
     s.add_argument("--targets", required=True)
@@ -1354,6 +1636,8 @@ def main(argv=None):
     s.add_argument("--limit", type=int, default=0)
     s.add_argument("--allow-name", action="store_true", help="also apply product-name matches (add-name)")
     s.add_argument("--allow-range", action="store_true", help="also apply padded range photos (add-range)")
+    s.add_argument("--allow-family", action="store_true",
+                   help="also apply the brand's one photo of a kind of cable to titles that name no range (add-family)")
     s = sub.add_parser("pad")
     s.add_argument("--plan", required=True)
     s.add_argument("--out-dir", required=True)
