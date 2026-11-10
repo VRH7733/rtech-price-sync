@@ -30,11 +30,11 @@
   / JS defer (~0.9 s render-blocking; can break the cart or consent box, needs a quiet-hour test)
   and the home-page heading-order fix (page content edit).
 - Share image: `rtechelectricals-share-1200x630.jpg` (media 8920) made from the real logo file
-  (no AI), set as Rank Math > Titles & Meta > OpenGraph Thumbnail. It shows only after
-  rtech-ai-seo 1.1.4: before that the plugin's fallback added the logo ahead of Rank Math's default.
-  1.1.4 is on branch claude/rtech-ai-seo-1.1.4 (wp-plugin-test run 42777128291 passed: no-photo
-  product gets the default, product with a photo keeps it). NOT installed on the shop: waiting for
-  the owner's OK (the zip is uploaded and waiting on the "Replace current with uploaded" step).
+  (no AI), set as Rank Math > Titles & Meta > OpenGraph Thumbnail. rtech-ai-seo 1.1.4 (before it
+  the plugin's fallback added the logo ahead of Rank Math's default) passed wp-plugin-test run
+  42777128291 and was installed on the shop with the owner's OK (10 Nov), merged to main.
+  Verified live after a LiteSpeed purge: products without a photo share the 1200x630 image;
+  a product with an official photo (Legrand 412928) still shares its own photo.
 - Phone (owner, 10 Nov): +91 84318 77469 is primary on both sites; the shop and its business data
   already use only that number. Google Business Profile (cid 8900355971559574098) also shows it,
   hours 09:00-19:00 every day, website = ramtechautomation.co.in.
