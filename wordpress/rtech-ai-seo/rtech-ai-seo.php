@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       RTech AI & Search Helper
  * Description:       Makes the shop easy for Google and AI assistants (ChatGPT, Gemini, Perplexity, Claude) to read: clean product descriptions, Product data on every product (Request a Quote ones too), one business name, readable breadcrumbs, a share image, /llms.txt, a Google Merchant Center product feed, order requests by email and WhatsApp, consistent policy pages and basic security hardening. Changes no prices, stock or product content.
- * Version:           1.1.3
+ * Version:           1.1.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            RTechElectricals
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RTECH_AI_VERSION', '1.1.3' );
+define( 'RTECH_AI_VERSION', '1.1.4' );
 define( 'RTECH_AI_FEED_PATH', '/google-merchant-feed.xml' );
 define( 'RTECH_AI_GBP_LINK', 'https://share.google/cDnzcwB3UO6bpJeWk' );
 
@@ -410,8 +410,17 @@ add_filter(
 	20
 );
 
-/** A share image for pages that have none: the product photo if any, else the site logo. */
+/**
+ * A share image for pages that have none: the product photo if any, else Rank Math's default
+ * share image (Titles & Meta > Global > OpenGraph Thumbnail, 1200x630), else the site logo.
+ * This hook runs before Rank Math adds its own default, so the default is looked up here
+ * (10 Nov 2026: owner's 1200x630 image; before 1.1.4 the logo always won).
+ */
 function rtech_ai_fallback_image_id() {
+	$titles = get_option( 'rank-math-options-titles' );
+	if ( is_array( $titles ) && ! empty( $titles['open_graph_image_id'] ) && wp_attachment_is_image( (int) $titles['open_graph_image_id'] ) ) {
+		return (int) $titles['open_graph_image_id'];
+	}
 	$logo = (int) get_theme_mod( 'custom_logo' );
 	if ( ! $logo && function_exists( 'blocksy_get_theme_mod' ) ) {
 		$b = blocksy_get_theme_mod( 'custom_logo' );

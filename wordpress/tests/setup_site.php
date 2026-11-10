@@ -110,4 +110,35 @@ wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Old Promises', 'p
 	'post_content' => '<p>Bengaluru delivery: 24–48 hours</p><p>Damaged or mismatched order reporting: within 24 hours</p>'
 		. '<h3>24–48 Hour Bengaluru Delivery</h3><p>Fast local delivery for eligible electrical products across Bengaluru.</p>'
 		. '<h3>24 Hour Issue Reporting</h3><p>Report damaged or mismatched orders within 24 hours of delivery.</p>' ) );
+// 1.1.4: Rank Math's default share image (OpenGraph Thumbnail) is used for pages without a photo
+// a real 1200x630 PNG: Rank Math leaves out share images under 200 px (the 1x1 test images)
+$up   = wp_upload_dir();
+$file = $up['path'] . '/share-default.png';
+$im   = imagecreatetruecolor( 1200, 630 );
+imagefill( $im, 0, 0, imagecolorallocate( $im, 15, 35, 74 ) );
+imagepng( $im, $file );
+$share = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'share-default', 'post_status' => 'inherit' ), $file );
+require_once ABSPATH . 'wp-admin/includes/image.php';
+wp_update_attachment_metadata( $share, wp_generate_attachment_metadata( $share, $file ) );
+// and a product with a real 600x600 photo, which must keep its own photo
+$pfile = $up['path'] . '/photo-mcb.png';
+$pim   = imagecreatetruecolor( 600, 600 );
+imagefill( $pim, 0, 0, imagecolorallocate( $pim, 240, 240, 240 ) );
+imagepng( $pim, $pfile );
+$pimg = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'photo-mcb', 'post_status' => 'inherit' ), $pfile );
+wp_update_attachment_metadata( $pimg, wp_generate_attachment_metadata( $pimg, $pfile ) );
+$pm = new WC_Product_Simple();
+$pm->set_name( 'Havells 16A Single Pole MCB' );
+$pm->set_slug( 'photo-mcb' );
+$pm->set_sku( 'RT-HAVE-0903' );
+$pm->set_regular_price( '' ); // no price: stays out of the one-item feed check
+$pm->set_category_ids( array( $sw_id ) );
+$pm->set_image_id( $pimg );
+$pm->set_status( 'publish' );
+$pm->save();
+$t = get_option( 'rank-math-options-titles', array() );
+$t = is_array( $t ) ? $t : array();
+$t['open_graph_image_id'] = $share;
+$t['open_graph_image']    = wp_get_attachment_url( $share );
+update_option( 'rank-math-options-titles', $t );
 echo "priced=$id quote=$qid\n";
