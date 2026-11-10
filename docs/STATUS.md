@@ -1,5 +1,46 @@
 # STATUS (updated 10 Nov 2026, LIVE)
 
+## 10 Nov 2026, 06:30-07:15 UTC: done in the owner's Chrome (verified on the live sites)
+
+- Backup: manual hPanel backup of rtechelectricals.com, latest backup 10 Nov 12:10 IST.
+- rtech-ai-seo 1.1.2 -> 1.1.3 (zip from wp-plugin-test run 41438097465). Verified: header
+  `Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=()` on /, /shop/; /llms.txt
+  says "Phone and WhatsApp support: 7:00 AM to 11:00 PM, every day." The version bump also creates
+  the draft pages again if missing (drafts only, nothing published).
+- Blocksy 2.1.60 -> 2.1.61, WooCommerce 11.2.1 -> 11.2.2 (only those two; Hostinger Tools, LiteSpeed,
+  Rank Math, Wordfence, WP 2FA, WPVibe updates still pending). Home, a product, cart and checkout
+  render, no console errors, no WooCommerce DB-update notice. LiteSpeed purged twice and the
+  Hostinger CDN flushed; a few CDN-cached pages still pointed at `?ver=2.1.60` minutes later
+  (same file path, so harmless; clears on the CDN's own expiry).
+- /readme.html deleted (File Manager API 204; live URL now 404). A WordPress core update puts it back.
+- Search Console: https://rtechelectricals.com/ is verified; /sitemap_index.xml submitted 24 Oct,
+  last read 9 Nov, Success, 5,737 URLs. Nothing to resubmit.
+- GA4 "no tag" explained, nothing broken: rte-ga4-launch-assist is opt-in (basic consent mode). It
+  loads gtag (G-6PJFMHKVER, property 553044278 "RTechElectricals Website") only after a visitor
+  clicks Accept, and never for logged-in users, cart, checkout or account pages, so audit bots see
+  no tag. Live test with the plugin's signed admin link: Reject = no Google request; Accept =
+  gtag + page_view (GA4 Realtime showed 1 user, 2 page_views); Reject again = no requests.
+  The stream shows "Receiving traffic in past 48 hours".
+- PageSpeed mobile (pagespeed.web.dev from the owner's browser): 99-100 performance on /, /shop/,
+  wires-cables, brand/havells. Details and proposed fixes in the data repo `seo/speed.md`.
+  Owner said "optimize all the things" (10 Nov): fixes NOT applied yet (Chrome stopped responding).
+- Share image: `rtechelectricals-share-1200x630.jpg` made from the real logo file (no AI); not yet
+  set as Rank Math's default (Chrome stopped responding).
+- Phone (owner, 10 Nov): +91 84318 77469 is primary on both sites; the shop and its business data
+  already use only that number. Google Business Profile (cid 8900355971559574098) also shows it,
+  hours 09:00-19:00 every day, website = ramtechautomation.co.in.
+- keepalive.yml merged to main (fast-forward 53a48fa); manual run 42769947148 succeeded and
+  re-enabled daily-prices, brand-prices and keepalive.
+- ramtechautomation.co.in: public_html copied to the site repo (branch claude/public-html-2026-11-10,
+  config.php left out: only the enquiry recipient address). Prepared on that branch, NOT uploaded:
+  HSTS + Permissions-Policy in .htaccess, sameAs = Business Profile, openingHoursSpecification,
+  84318 77469 as primary call/WhatsApp number, og.png 307 KB -> 73 KB. DMARC already exists
+  (`p=quarantine`, GoDaddy rua), stricter than the proposed p=none: left as is.
+- Product photos (owner, 10 Nov): manufacturers allow their images but will not send packs. Agreed
+  safe route: extend brand-images to the brands' official sources (sites, catalogues/PDFs, official
+  marketplace stores) and use the brand's range photo for every size of a wire range (the KEI/RR
+  Kabel method of 18 Oct). Not done: photos shot by other sellers, or AI redraws of products.
+
 ## 10 Nov 2026: where things stand (from the data repo; the shop itself was not reachable from
 ## the cloud session that wrote this, so nothing below was re-checked on the live site)
 
