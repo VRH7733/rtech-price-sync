@@ -111,7 +111,15 @@ wp_insert_post( array( 'post_type' => 'page', 'post_title' => 'Old Promises', 'p
 		. '<h3>24–48 Hour Bengaluru Delivery</h3><p>Fast local delivery for eligible electrical products across Bengaluru.</p>'
 		. '<h3>24 Hour Issue Reporting</h3><p>Report damaged or mismatched orders within 24 hours of delivery.</p>' ) );
 // 1.1.4: Rank Math's default share image (OpenGraph Thumbnail) is used for pages without a photo
-$share = rtech_test_image( 'share-default.png' );
+// a real 1200x630 PNG: Rank Math leaves out share images under 200 px (the 1x1 test images)
+$up   = wp_upload_dir();
+$file = $up['path'] . '/share-default.png';
+$im   = imagecreatetruecolor( 1200, 630 );
+imagefill( $im, 0, 0, imagecolorallocate( $im, 15, 35, 74 ) );
+imagepng( $im, $file );
+$share = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'share-default', 'post_status' => 'inherit' ), $file );
+require_once ABSPATH . 'wp-admin/includes/image.php';
+wp_update_attachment_metadata( $share, wp_generate_attachment_metadata( $share, $file ) );
 $t = get_option( 'rank-math-options-titles', array() );
 $t = is_array( $t ) ? $t : array();
 $t['open_graph_image_id'] = $share;
