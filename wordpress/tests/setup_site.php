@@ -120,6 +120,22 @@ imagepng( $im, $file );
 $share = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'share-default', 'post_status' => 'inherit' ), $file );
 require_once ABSPATH . 'wp-admin/includes/image.php';
 wp_update_attachment_metadata( $share, wp_generate_attachment_metadata( $share, $file ) );
+// and a product with a real 600x600 photo, which must keep its own photo
+$pfile = $up['path'] . '/photo-mcb.png';
+$pim   = imagecreatetruecolor( 600, 600 );
+imagefill( $pim, 0, 0, imagecolorallocate( $pim, 240, 240, 240 ) );
+imagepng( $pim, $pfile );
+$pimg = wp_insert_attachment( array( 'post_mime_type' => 'image/png', 'post_title' => 'photo-mcb', 'post_status' => 'inherit' ), $pfile );
+wp_update_attachment_metadata( $pimg, wp_generate_attachment_metadata( $pimg, $pfile ) );
+$pm = new WC_Product_Simple();
+$pm->set_name( 'Havells 16A Single Pole MCB' );
+$pm->set_slug( 'photo-mcb' );
+$pm->set_sku( 'RT-HAVE-0903' );
+$pm->set_regular_price( '' ); // no price: stays out of the one-item feed check
+$pm->set_category_ids( array( $sw_id ) );
+$pm->set_image_id( $pimg );
+$pm->set_status( 'publish' );
+$pm->save();
 $t = get_option( 'rank-math-options-titles', array() );
 $t = is_array( $t ) ? $t : array();
 $t['open_graph_image_id'] = $share;
