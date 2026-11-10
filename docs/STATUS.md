@@ -23,19 +23,37 @@
   The stream shows "Receiving traffic in past 48 hours".
 - PageSpeed mobile (pagespeed.web.dev from the owner's browser): 99-100 performance on /, /shop/,
   wires-cables, brand/havells. Details and proposed fixes in the data repo `seo/speed.md`.
-  Owner said "optimize all the things" (10 Nov): fixes NOT applied yet (Chrome stopped responding).
-- Share image: `rtechelectricals-share-1200x630.jpg` made from the real logo file (no AI); not yet
-  set as Rank Math's default (Chrome stopped responding).
+  Owner said "optimize all the things" (10 Nov). Applied and verified live: LiteSpeed browser cache
+  on (static files now `max-age=31557600`, was 7 days); header logo 2172x724 PNG (95 KB served)
+  -> 720x240 WebP (media 8923, 26.5 KB, shown 180x60, header unchanged); links in the brands bar
+  and in product text underlined (Additional CSS). NOT applied: LiteSpeed async CSS / critical CSS
+  / JS defer (~0.9 s render-blocking; can break the cart or consent box, needs a quiet-hour test)
+  and the home-page heading-order fix (page content edit).
+- Share image: `rtechelectricals-share-1200x630.jpg` (media 8920) made from the real logo file
+  (no AI), set as Rank Math > Titles & Meta > OpenGraph Thumbnail. It shows only after
+  rtech-ai-seo 1.1.4: before that the plugin's fallback added the logo ahead of Rank Math's default.
+  1.1.4 is on branch claude/rtech-ai-seo-1.1.4 (wp-plugin-test run 42777128291 passed: no-photo
+  product gets the default, product with a photo keeps it). NOT installed on the shop: waiting for
+  the owner's OK (the zip is uploaded and waiting on the "Replace current with uploaded" step).
 - Phone (owner, 10 Nov): +91 84318 77469 is primary on both sites; the shop and its business data
   already use only that number. Google Business Profile (cid 8900355971559574098) also shows it,
   hours 09:00-19:00 every day, website = ramtechautomation.co.in.
 - keepalive.yml merged to main (fast-forward 53a48fa); manual run 42769947148 succeeded and
   re-enabled daily-prices, brand-prices and keepalive.
 - ramtechautomation.co.in: public_html copied to the site repo (branch claude/public-html-2026-11-10,
-  config.php left out: only the enquiry recipient address). Prepared on that branch, NOT uploaded:
-  HSTS + Permissions-Policy in .htaccess, sameAs = Business Profile, openingHoursSpecification,
-  84318 77469 as primary call/WhatsApp number, og.png 307 KB -> 73 KB. DMARC already exists
+  config.php left out: only the enquiry recipient address). Uploaded and verified live: HSTS +
+  Permissions-Policy headers, sameAs = Business Profile, openingHoursSpecification 09:00-19:00,
+  84318 77469 as primary call/WhatsApp number (95504 14637 stays second / sales), og.png
+  307 KB -> 73 KB (same 1200x630), opt-in GA4 (property 563562150, G-DCWZDBQWJT, enhanced
+  measurement off; Realtime showed the test visit). Search Console: verified, sitemap read 5 Nov.
+  Business Profile website = ramtechautomation.co.in already. DMARC already exists
   (`p=quarantine`, GoDaddy rua), stricter than the proposed p=none: left as is.
+- Enquiry form: works, but both test enquiries (12:45, 12:57 IST) landed in Gmail SPAM. Cause
+  (message headers): PHP mail() goes out through Hostinger/MailChannels with envelope sender
+  srv1496.main-hosting.eu, no DKIM, so DMARC fails and p=quarantine sends it to spam. `-f` is
+  ignored by the relay (tested, reverted). Fix options for the owner: send through an
+  authenticated mailbox on the domain (SMTP, password set by the owner in config.php), or a Gmail
+  filter "never send to spam" for no-reply@ramtechautomation.co.in.
 - Product photos (owner, 10 Nov): manufacturers allow their images but will not send packs. Agreed
   safe route: extend brand-images to the brands' official sources (sites, catalogues/PDFs, official
   marketplace stores) and use the brand's range photo for every size of a wire range (the KEI/RR
