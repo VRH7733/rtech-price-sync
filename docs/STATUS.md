@@ -277,6 +277,46 @@ Certain matches only (model/catalogue number), quality check (>= 600 px, not ban
   KEI Banfire range photo padded correctly; Polycab shows the same box art for every size (the box on
   a 6 sq mm product reads 2.5 sq mm), the owner was told. 4,285 still have none.
 
+## Wire range photos from the brands' own range pages (10-11 Nov 2026, branch claude/brand-range-photos, DRY RUN ONLY)
+
+Owner (10 Nov): manufacturers allow their images but send no packs; manufacturer-owned images only,
+and the brand's range photo for every size and colour of a wire range (the 18 Oct KEI/RR method).
+Never photos shot by other sellers (Moglix, IndustryBuying, IndiaMART, marketplace listings), never
+AI-made or AI-redrawn photos.
+- `tools/brand_ranges.py`: hand-checked map from our wire titles to the brand's own range page
+  (Havells Lifeline Plus S3 / Plus HRFR / FR, Life Guard, Life Shield; KEI ConFlame, ConFlame Green+,
+  HomeCab, BanFire; RR Kabel Unilay, Superex FR, Superex Green, Ratnaflex, FR-HSF, FR-LSH, LS0H FR;
+  Finolex Silver, Gold, Flamegard; Polycab Maxima+, Etira, Optima+, Primma, Suprema through the
+  per-size pages). A title gets a photo only if it matches exactly one range of its brand.
+  `family` entries (KEI multicore flexibles, RR FR-LSH described in words) are weaker: action
+  `add-family`, applied only with allow_family.
+- `crawl --ranges-only` opens the needed range pages (robots.txt, >= 6 s per host, Havells 10 s,
+  first refusal stops the brand) and picks the photo from structured data or the page body (lazy
+  images, not menus or offers, brand's own domain only, file name or alt text must name the range).
+  `plan` uses the photo in the product's own colour when the brand names the colour, else the
+  range's main photo; padded to a white square like the 18 Oct range photos.
+- Fixed in passing: a reCAPTCHA script tag on a real page (Polycab's campaign page) no longer counts
+  as a refusal; it had stopped the Polycab crawl on 25 Oct. Range-photo shape limit 2.6 -> 2.7 for
+  RR Kabel's 800x300 cable renders on white (banners still fail).
+- Tests: `tests/test_brand_ranges.py` on real pages saved 10 Nov (`tests/fixtures/real/ranges/`,
+  scripts/styles emptied; full copies in the data repo `samples/2026-11-10/`). 414 passed, 2 skipped.
+- Dry run (runs 42781708253 and 43009389874, apply=false; data repo `brand-images/ranges-dryrun-2026-11.md`):
+  1,024 products would get an official photo: 867 range photos (Havells 445, KEI 161, RR Kabel 111,
+  Finolex 106, Polycab 44), 152 family photos (KEI 106, RR Kabel 46), 5 Schneider by model number.
+  The shop list read on 11 Nov: 5,682 published products, 4,674 without any image.
+- Verified: the range pages and photos were fetched live by the runs (all from the brands' own
+  domains); a sample of plan rows and photos was looked at by hand. NOT verified: how the padded
+  photos look on the shop (nothing was applied). Caveats for the owner: a range photo shows one coil
+  colour (the product's own colour only where the brand names it: 119 of 1,019); KEI's ConFlame page
+  photo is the ConFlame Green+ box; Havells "Lifeline Plus HRFR" gets the Lifeline Plus S3 photo
+  (Havells sells the HRFR range under that name now).
+- Not covered: Anchor/Panasonic (site shows only banners), Havells multicore "flexible cable" and Reo
+  FR, RR Kabel braided/shielded/flexible and FR-HSF (photo fails: cable too small), Polycab FRLF and FR
+  industrial flexible, Finolex flexible: no certain range page. Catalogue PDFs not built (several
+  ranges per brochure page); marketplace brand stores not used (uploader not provable).
+- Live run needs the owner's OK: brand-images apply=true allow_range=true (and allow_family=true only
+  if the owner also wants the 152 family photos). Merge the branch first.
+
 ## Still NOT verified
 
 1. Behaviour at full volume (about 1,300 rows a night). The Phase 2 pilot (137 rows, 248
