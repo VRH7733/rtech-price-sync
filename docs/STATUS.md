@@ -7,7 +7,7 @@
   photos named by SKU. AI-made product photos are not used (decided with the owner, 10 Nov).
 - Steps when the file comes back: (1) `python tools/owner_photos.py extract --xlsx <file> [--folder <dir>]
   --out-dir photos --manifest photos/manifest.csv` on the PC (reads Excel "Place in Cell", pictures
-  placed over the cell, WPS cell pictures; checks >= 400 px; white square 1200 px JPEG named by SKU);
+  placed over the cell, WPS cell pictures; under 600 px not used, 600-999 px used but flagged for a retake (the shop shows 600x600); white square 1200 px JPEG named by SKU);
   (2) publish photos/*.jpg + manifest.csv as release `owner-photos-YYYYMMDD` of this repo (public:
   needs the owner's go, the photos are public on the shop anyway); (3) run owner-photos.yml with that
   tag, apply=false first (report), then apply=true. Products with a photo are skipped unless

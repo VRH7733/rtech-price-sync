@@ -51,7 +51,10 @@ NS = {
 R_ID = "{%s}id" % NS["r"]
 R_EMBED = "{%s}embed" % NS["r"]
 
-MIN_SIDE = 400          # shorter side in pixels; phone photos are 1000+ px
+# The shop shows product photos as 600x600 squares (sizes="(max-width: 600px) 100vw, 600px",
+# checked 11 Nov 2026) and the full image for zoom: under 600 px looks blurry, 1200+ is sharp.
+MIN_SIDE = 600          # shorter side in pixels; below this the photo is not used
+GOOD_SIDE = 1000        # 600-999 px is used but flagged "low resolution, retake if possible"
 OUT_SIDE = 1200         # square JPEG put on the shop
 MANIFEST_FIELDS = ["sku", "file", "source", "w", "h", "status", "reason", "result"]
 FORBIDDEN = {"regular_price", "sale_price", "price", "stock_status", "stock_quantity", "manage_stock", "type",
@@ -310,6 +313,8 @@ def cmd_extract(a) -> int:
                 name = safe_name(sku)
                 (out / name).write_bytes(jpg)
                 row.update(file=name, status="ok")
+                if min(w, h) < GOOD_SIDE:
+                    row["reason"] = f"low resolution ({w}x{h}): used, but retake at 1200 px or more if possible"
                 seen[sku.upper()] = src
             else:
                 row["reason"] = why
@@ -323,6 +328,8 @@ def cmd_extract(a) -> int:
     for r in rows:
         if r["status"] != "ok":
             print(f"  not used: {r['source']} {r['sku']}: {r['reason']}")
+        elif r["reason"]:
+            print(f"  used, retake if possible: {r['source']} {r['sku']}: {r['reason']}")
     for p in problems:
         print("  " + p)
     return 0 if ok else 1

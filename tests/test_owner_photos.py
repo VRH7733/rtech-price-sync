@@ -144,6 +144,8 @@ def test_prepare_makes_an_upright_white_square_and_rejects_small_or_broken():
     assert not why and (w, h) == (1600, 900) and im.size == (1200, 1200) and im.format == "JPEG"
     assert im.getpixel((5, 5))[0] > 240  # padding is white
     assert "too small" in op.prepare(_png(300, 500))[3]
+    assert "too small" in op.prepare(_png(1200, 590))[3]  # the shop shows 600x600: under 600 is blurry
+    assert op.prepare(_png(600, 600))[0] is not None
     assert op.prepare(b"not an image")[0] is None
 
 
@@ -161,6 +163,17 @@ def test_extract_writes_jpegs_named_by_sku_and_keeps_only_the_first_photo_per_sk
     assert [(r["sku"], r["status"]) for r in rows] == [("RT-HAVE-0001", "ok"), ("RT-HAVE-0001", "skip"),
                                                        ("RT-HAVE-0009", "skip")]
     assert "second photo" in rows[1]["reason"] and "too small" in rows[2]["reason"]
+    assert "low resolution" in rows[0]["reason"]  # 800x600: used, but flagged for a retake
+
+
+def test_a_sharp_photo_is_not_flagged(tmp_path):
+    folder = tmp_path / "phone"
+    folder.mkdir()
+    (folder / "RT-KEI-0001.jpg").write_bytes(_png(1500, 1200))
+    man = tmp_path / "m.csv"
+    op.cmd_extract(argparse.Namespace(xlsx="", folder=str(folder), out_dir=str(tmp_path / "o"), manifest=str(man)))
+    r = next(csv.DictReader(open(man)))
+    assert r["status"] == "ok" and r["reason"] == ""
 
 
 class FakeWoo:
