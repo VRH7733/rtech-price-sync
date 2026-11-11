@@ -1,0 +1,70 @@
+name: owner-photos
+
+# Manual. The owner's own product photos (tools/owner_photos.py). The photos are prepared on the
+# owner's PC from products-without-photo.xlsx (`owner_photos.py extract`) and published with
+# manifest.csv as assets of a release of this repo (tag owner-photos-YYYYMMDD); WooCommerce downloads
+# each photo from that release. apply=false (default) only reports what would happen.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "release tag that holds the photos and manifest.csv, e.g. owner-photos-20261111"
+        required: true
+      apply:
+        description: "put the photos on the shop (false = dry run, report only)"
+        type: boolean
+        default: false
+      overwrite:
+        description: "also replace a photo a product already has"
+        type: boolean
+        default: false
+      limit:
+        description: "at most this many photos this run (0 = all)"
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Manifest from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p manifest.csv -O manifest.csv
+          echo "photos in manifest: $(grep -c ',ok,' manifest.csv || true)"
+      - name: Put the photos on the shop
+        env:
+          WC_URL: ${{ secrets.WC_URL }}
+          WC_KEY: ${{ secrets.WC_KEY }}
+          WC_SECRET: ${{ secrets.WC_SECRET }}
+          TAG: ${{ github.event.inputs.tag }}
+          APPLY: ${{ github.event.inputs.apply }}
+          OVERWRITE: ${{ github.event.inputs.overwrite }}
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          args="--manifest manifest.csv --base-url https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG --limit $LIMIT"
+          [ "$APPLY" = "true" ] || args="$args --dry-run"
+          [ "$OVERWRITE" = "true" ] && args="$args --overwrite"
+          python tools/owner_photos.py apply $args | tee result.txt
+          { echo "## owner-photos $TAG (apply=$APPLY)"; echo; tail -1 result.txt; echo; echo '```';
+            cut -d, -f1,7,8 manifest.csv | head -60; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-photos-result
+          path: manifest.csv
+          retention-days: 30
