@@ -83,6 +83,9 @@ def test_rr_kabel_range_beats_family_and_superex_variants():
     assert _key("rrkabel", "RR Kabel Superex Green HR+FR 1.5 Sq.mm Wire") == "rrkabel/superex-green"
     assert _key("rrkabel", "RR Kabel Superex FR 1.5 Sq.mm 1 Core Flame Retardant (FR) House Cable Green (90 m)") \
         == "rrkabel/superex-fr"
+    # HR+FR Superex may be Superex Green HR+FR (RR's HR+FR Superex): no guess (dry run 10 Nov)
+    assert not br.range_for("rrkabel", "RR Kabel Superex Industrial Cables 90 m Length HR+FR PVC Insulation 4 Sq. mm "
+                                       "Annealed Copper Conductor Yellow")[0]
     # names FR-LSH (range) and also says it in words (family): the range wins
     r, _ = br.range_for("rrkabel", "RR Kabel FR-LSH 0.75 Sq. mm 1 Core Flame Retardant Low Smoke Halogen Cable Grey (200 m)")
     assert r.key == "rrkabel/fr-lsh" and r.kind == "range"
