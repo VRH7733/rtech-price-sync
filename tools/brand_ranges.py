@@ -63,7 +63,8 @@ RANGES = {
     "kei": [
         # KEI's ConFlame-FRLS page shows the ConFlame Green+ box
         Range("kei/conflame-green-plus", "ConFlame Green+", r"\bcon ?flame green ?plus\b", (KEI_HW + "con-flame-frls/",)),
-        Range("kei/conflame", "ConFlame-FRLS", r"\bcon ?flame\b", (KEI_HW + "con-flame-frls/",), exclude=r"\bgreen\b"),
+        Range("kei/conflame", "ConFlame-FRLS", r"\bcon ?flame\b", (KEI_HW + "con-flame-frls/",),
+              exclude=r"\bgreen ?plus\b"),  # 'Green+', not the colour green (a green ConFlame wire is ConFlame)
         Range("kei/homecab", "HomeCab-FR", r"\bhome ?cab\b", (KEI_HW + "home-cab-fr/",)),
         Range("kei/banfire", "BanFire-ZHFR", r"\bban ?fire\b", (KEI_HW + "ban-fire-zhfr/",)),
         Range("kei/multicore-flexible", "Single Core / Multicore Flexible Cables", r"\bflexible\b.*\bmultistrand",
@@ -75,7 +76,7 @@ RANGES = {
         Range("rrkabel/superex-green", "Superex Green HR+FR", r"\bsuperex green\b", (RR + "superex-green-hrfr/",),
               image=r"superex-green"),
         # RR Kabel's Superex FR photo is shown (by file name) on its Unilay page; Superex FR has no page in the sitemap
-        Range("rrkabel/superex-fr", "Superex FR", r"\bsuperex\b", (RR + "unilay-hr-fr/",), exclude=r"\bgreen\b",
+        Range("rrkabel/superex-fr", "Superex FR", r"\bsuperex\b", (RR + "unilay-hr-fr/",), exclude=r"\bsuperex green\b",
               image=r"superex-fr"),
         Range("rrkabel/ratnaflex", "Ratnaflex Multicore Cable (IS 694)", r"\bratnaflex\b", (RR + "ratnaflex-multicore-cable-is-694/",)),
         Range("rrkabel/fr-hsf", "FR-HSF", r"\bfr ?hsf\b", (RR + "fr-hsf/",), exclude=r"mahashield"),

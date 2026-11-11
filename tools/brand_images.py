@@ -103,7 +103,9 @@ BAD_IMAGE_URL = re.compile(r"logo|placeholder|banner|favicon|sprite|icon|\.svg|\
 MIN_SIDE, MAX_RATIO, MIN_PLAIN_BORDER, BIGGER = 400, 1.6, 0.85, 1.5
 # range photos (one official photo of a wire range, shared by its sizes): often a wide 530x300 picture,
 # shown padded to a white square, never cropped
-RANGE_MIN_LONG, RANGE_MAX_RATIO = 400, 2.6
+# 2.7 (was 2.6 until 11 Nov 2026): RR Kabel's range pages show an 800x300 cable render on white;
+# banners (1920x600 = 3.2) still fail, and the padded square must still pass the normal check.
+RANGE_MIN_LONG, RANGE_MAX_RATIO = 400, 2.7
 SHARED_IMAGE_PAGES = 4
 PAGE_FIELDS = ["url", "status", "strong", "images", "fetched", "name"]
 NAME_STOP = {"buy", "online", "india", "price", "best", "the", "and", "with", "for", "of", "in", "by", "a", "an",

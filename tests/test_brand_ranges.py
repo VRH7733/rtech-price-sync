@@ -64,6 +64,9 @@ def test_kei_conflame_green_plus_and_multicore_family():
     assert _key("kei", "KEI Conflame 16 Sq.mm 1 Core Flame Retardant Low Smoke Halogen Industrial Cable Yellow (90 m)") \
         == "kei/conflame"
     assert _key("kei", "KEI FR-LSH Multistrand Cable Conflame -FR-LSH 0.50 Sq. mm 1 Core Red (300 m)") == "kei/conflame"
+    # the colour green is not 'Green+' (dry run 10 Nov: 25 green ConFlame wires missed this rule)
+    assert _key("kei", "KEI Conflame 2.5 Sq.mm 1 Core Flame Retardant Low Smoke Halogen Industrial Cable Green (90 m)") \
+        == "kei/conflame"
     fam, _ = br.range_for("kei", "KEI 4 Sq.mm 4 Core Flexible FRLS Multistrand Industrial Cable Black (100 m)")
     assert fam.key == "kei/multicore-flexible" and fam.kind == "family"
     assert br.range_for("kei", "KEI Flexible Industrial Multistranded Cable FRLS PVC Sheathed 4 mm² 19 Core "
@@ -78,6 +81,8 @@ def test_rr_kabel_range_beats_family_and_superex_variants():
     assert _key("rrkabel", "RR Kabel Superex FR 1.5 Sq.mm 1 Core Flame Retardant (FR) House Cable Yellow (90 m)") \
         == "rrkabel/superex-fr"
     assert _key("rrkabel", "RR Kabel Superex Green HR+FR 1.5 Sq.mm Wire") == "rrkabel/superex-green"
+    assert _key("rrkabel", "RR Kabel Superex FR 1.5 Sq.mm 1 Core Flame Retardant (FR) House Cable Green (90 m)") \
+        == "rrkabel/superex-fr"
     # names FR-LSH (range) and also says it in words (family): the range wins
     r, _ = br.range_for("rrkabel", "RR Kabel FR-LSH 0.75 Sq. mm 1 Core Flame Retardant Low Smoke Halogen Cable Grey (200 m)")
     assert r.key == "rrkabel/fr-lsh" and r.kind == "range"
@@ -171,6 +176,13 @@ def test_images_on_other_domains_are_never_candidates():
             '<img src="https://www.rrkabel.com/wp-content/uploads/unilay-hr-fr.png" alt="Unilay"></main></body></html>')
     got = bi.range_page_images(html, "https://www.rrkabel.com/products/unilay-hr-fr/", "", ["Unilay"])
     assert [g["url"] for g in got] == ["https://www.rrkabel.com/wp-content/uploads/unilay-hr-fr.png"]
+
+
+def test_rr_kabel_wide_cable_render_passes_padded_but_a_banner_does_not():
+    # RR Kabel range pages (10 Nov 2026): an 800x300 cable render on white, cable across the middle
+    assert bi.assess_range(_png(800, 300, box=(55, 105, 745, 195), color=(20, 120, 60)))["range_ok"]
+    assert not bi.assess_range(_png(1920, 600))["range_ok"]                          # banner shape
+    assert not bi.assess_range(_png(800, 300, box=(395, 145, 405, 155)))["range_ok"]  # product lost in the square
 
 
 # ---------------------------------------------------------------- refusal check (REAL page)
