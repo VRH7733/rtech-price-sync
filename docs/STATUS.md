@@ -1,5 +1,21 @@
 # STATUS (updated 10 Nov 2026, LIVE)
 
+## 11 Nov 2026: owner's own product photos (tools/owner_photos.py, workflow owner-photos.yml)
+
+- Owner fills `products-without-photo.xlsx` (4,674 products without a photo on 10 Nov, one sheet per
+  brand, orange PHOTO column A, SKU column E) with photos of the real products, or sends a folder of
+  photos named by SKU. AI-made product photos are not used (decided with the owner, 10 Nov).
+- Steps when the file comes back: (1) `python tools/owner_photos.py extract --xlsx <file> [--folder <dir>]
+  --out-dir photos --manifest photos/manifest.csv` on the PC (reads Excel "Place in Cell", pictures
+  placed over the cell, WPS cell pictures; checks >= 400 px; white square 1200 px JPEG named by SKU);
+  (2) publish photos/*.jpg + manifest.csv as release `owner-photos-YYYYMMDD` of this repo (public:
+  needs the owner's go, the photos are public on the shop anyway); (3) run owner-photos.yml with that
+  tag, apply=false first (report), then apply=true. Products with a photo are skipped unless
+  overwrite. Undo: `brand_images.py remove --brand-name owner`.
+- Tested: 7 unit tests (all three picture kinds, folder, checks, apply rules incl. night stop);
+  extract run on the real workbook with two sample pictures matched RT-HAVE-026 / RT-HAVE-2233.
+  The live dry run of the workflow was not done (publishing a test release needs the owner's OK).
+
 ## 10 Nov 2026, 06:30-07:15 UTC: done in the owner's Chrome (verified on the live sites)
 
 - Backup: manual hPanel backup of rtechelectricals.com, latest backup 10 Nov 12:10 IST.
